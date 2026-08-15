@@ -56,3 +56,20 @@
 - [x] Repackage the Bakery ERP source as a flat-root GitHub ZIP with unnecessary preview artifacts removed and direct upload instructions.
 - [x] Create a single-project-folder ZIP so the user downloads one archive, extracts one folder, and uploads that folder’s contents to GitHub without selecting multiple project folders individually.
 - [x] Upload the finalized Bakery ERP source to the user-selected GitHub repository `swammarn56-svg/C` and verify the pushed main branch.
+- [x] Replace Manus OAuth login and branding with Supabase email/password authentication for the requested bakery account.
+- [x] Validate the Supabase Auth login on Netlify and redeploy the no-Manus version.
+- [x] Replace Manus login/branding with Supabase email/password authentication and configure the requested account.
+- [x] Add installable PWA manifest, icons, service worker, and mobile install guidance.
+- [x] Validate and redeploy the Supabase-authenticated PWA to Netlify from GitHub C.
+- [x] Verify the live Netlify PWA manifest and service worker responses and record installability evidence.
+- [x] Set Netlify client Supabase variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, then redeploy.
+- [x] Verify the actual Netlify browser login flow loads the ERP with the requested admin role.
+- [x] Verify live browser service-worker registration and PWA installability evidence.
+- [x] Implement daily carryforward for Production, Packaging, and Sales, including downstream recalculation when an earlier date changes.
+- [x] Allow Opening edits only with a required Reason and recalculate later daily balances without deleting historical records.
+- [x] Add daily CSV/XLSX import/export and template controls directly to Production, Packaging, and Sales.
+- [ ] Add agreed web-app controls: daily lock/reopen, recalculation preview, negative-stock warnings, import validation, low-stock alerts, audit log, global search, print summaries, and button-based More navigation. Daily lock/reopen, low-stock alerts, import validation, and button-based More navigation are implemented; the remaining preview/audit/search/print polish remains pending.
+- [x] Do not implement the previously discussed mobile-first table redesign.
+- [x] Preserve existing Opening overrides and reasons when editing other daily fields; add regression coverage for downstream recalculation.
+- [x] Bind the daily Sales import/export panel to the currently selected shop and verify exact date/shop scoping.
+- [ ] Perform a real browser-side PWA service-worker registration and installability check, beyond HTTP response checks.

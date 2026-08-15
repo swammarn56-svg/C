@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
+import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
 import { normalizeSpreadsheetBusinessDate, stripUtf8Bom, toUtf8BomCsv } from "../../../shared/spreadsheet";
 import DetailedReports from "./DetailedReports";
@@ -78,9 +78,26 @@ function Stat({ label, value, tone = "default" }: { label: string; value: string
 
 function AccessGate({ children }: { children: ReactNode }) {
   const { loading, user } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
   if (loading) return <main className="auth-screen"><Card><p className="muted">Loading Bakery ERP…</p></Card></main>;
   if (!user) {
-    return <main className="auth-screen"><Card className="auth-card"><Package size={32} /><h1>Bakery ERP</h1><p>Sign in to access purchase, production, packaging, sales, and reports.</p><button className="primary-button" onClick={() => startLogin()}>Sign in</button></Card></main>;
+    const submit = async (event: FormEvent) => {
+      event.preventDefault();
+      setBusy(true);
+      setError("");
+      if (!supabase) {
+        setError("Supabase Auth is not configured for this deployment.");
+      } else {
+        const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (result.error) setError(result.error.message);
+      }
+      setBusy(false);
+    };
+    return <main className="auth-screen"><Card className="auth-card"><Package size={32} /><h1>Bakery ERP</h1><p>Sign in with your Supabase account to access purchase, production, packaging, sales, and reports.</p><form className="form-grid" onSubmit={submit}><label>Email<input required type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} /></label><label>Password<input required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} /></label>{error && <p className="form-error full-width" role="alert">{error}</p>}<button className="primary-button" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form></Card></main>;
   }
   return <>{children}</>;
 }
@@ -192,44 +209,61 @@ function PurchasesPage({ date }: { date: string }) {
   </>;
 }
 
-function OperationRow({ row, type }: { row: any; type: OperationType }) {
+function OperationRow({ row, type, isLocked }: { row: any; type: OperationType; isLocked: boolean }) {
   const utils = trpc.useUtils();
   const save = trpc.inventory.operations.save.useMutation({ onSuccess: () => utils.inventory.invalidate() });
-  const [values, setValues] = useState({ issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note });
-  useEffect(() => setValues({ issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note }), [row.issuedQtyGrams, row.returnQtyGrams, row.damageQtyGrams, row.note]);
+  const [values, setValues] = useState({ opening: row.openingQtyGrams, reason: row.openingReason, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note });
+  useEffect(() => setValues({ opening: row.openingQtyGrams, reason: row.openingReason, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note }), [row.openingQtyGrams, row.openingReason, row.issuedQtyGrams, row.returnQtyGrams, row.damageQtyGrams, row.note]);
   const used = asNumber(values.issued) - asNumber(values.returned) - asNumber(values.damage);
-  const closing = row.openingQtyGrams + row.inQtyGrams + asNumber(values.returned) - asNumber(values.issued);
-  const field = (key: "issued" | "returned" | "damage") => <input min="0" step="0.001" type="number" value={values[key]} onChange={event => setValues({ ...values, [key]: event.target.value })} />;
-  return <tr><td><strong>{row.item.name}</strong><small>{row.item.displayUnit}</small></td><td>{unitLabel(row.item, row.openingQtyGrams)}</td><td>{unitLabel(row.item, row.inQtyGrams)}</td><td>{field("issued")}</td><td>{field("returned")}</td><td>{field("damage")}</td><td>{unitLabel(row.item, used)}</td><td>{unitLabel(row.item, closing)}</td><td><input value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={save.isPending} onClick={() => save.mutate({ date: row.date, itemId: row.item.id, type, issuedQtyGrams: Math.max(0, asNumber(values.issued)), returnQtyGrams: Math.max(0, asNumber(values.returned)), damageQtyGrams: Math.max(0, asNumber(values.damage)), note: values.note || null })}>Save</button></td></tr>;
+  const closing = asNumber(values.opening) + row.inQtyGrams + asNumber(values.returned) - asNumber(values.issued);
+  const openingChanged = String(values.opening) !== String(row.openingQtyGrams);
+  const field = (key: "issued" | "returned" | "damage") => <input disabled={isLocked} min="0" step="0.001" type="number" value={values[key]} onChange={event => setValues({ ...values, [key]: event.target.value })} />;
+  return <tr><td><strong>{row.item.name}</strong><small>{row.item.displayUnit}</small></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => setValues({ ...values, opening: event.target.value })} />{openingChanged && <input required disabled={isLocked} placeholder="Reason for Opening edit" value={values.reason} onChange={event => setValues({ ...values, reason: event.target.value })} />}</td><td>{unitLabel(row.item, row.inQtyGrams)}</td><td>{field("issued")}</td><td>{field("returned")}</td><td>{field("damage")}</td><td>{unitLabel(row.item, used)}</td><td>{unitLabel(row.item, closing)}</td><td><input disabled={isLocked} value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={isLocked || save.isPending || (openingChanged && !values.reason.trim())} onClick={() => save.mutate({ date: row.date, itemId: row.item.id, type, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams ?? null), openingReason: openingChanged ? values.reason.trim() : (row.openingReason || null), issuedQtyGrams: Math.max(0, asNumber(values.issued)), returnQtyGrams: Math.max(0, asNumber(values.returned)), damageQtyGrams: Math.max(0, asNumber(values.damage)), note: values.note || null })}>Save</button></td></tr>;
 }
 
 function OperationsPage({ date, type }: { date: string; type: OperationType }) {
   const query = trpc.inventory.operations.daily.useQuery({ date, type });
+  const { user } = useAuth();
+  const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: type });
+  const utils = trpc.useUtils();
+  const lock = trpc.inventory.daily.lock.useMutation({ onSuccess: () => utils.inventory.invalidate() });
+  const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const label = type[0].toUpperCase() + type.slice(1);
-  return <><PageHeader title={`${label} daily ledger`} subtitle="Used = Issued − Return − Damage. Closing = Opening + In + Return − Issued." />
-    <Card className="formula-note"><strong>In</strong> is automatically sourced from purchases entered for this date. Items follow the order set in Item Dashboard.</Card>
-    <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th></th></tr></thead><tbody>{(query.data ?? []).map(row => <OperationRow key={row.item.id} row={row} type={type} />)}{!query.data?.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
+  const isLocked = Boolean(status.data?.locked);
+  const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: type })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: type })}>Lock day</button>}</span> : undefined;
+  return <><PageHeader title={`${label} daily ledger`} subtitle="Used = Issued − Return − Damage. Closing carries forward as the next day Opening." action={action} />
+    <Card className="formula-note"><strong>In</strong> is automatically sourced from purchases entered for this date. Opening edits require a reason and recalculate later days. {isLocked && <strong> This day is locked.</strong>}</Card>
+    <SpreadsheetPanel date={date} defaultKind={type} />
+    <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening / Reason</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th></th></tr></thead><tbody>{(query.data ?? []).map(row => <OperationRow key={row.item.id} row={row} type={type} isLocked={isLocked} />)}{!query.data?.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
   </>;
 }
 
-function SalesRow({ row, shopId }: { row: any; shopId: number }) {
+function SalesRow({ row, shopId, isLocked }: { row: any; shopId: number; isLocked: boolean }) {
   const utils = trpc.useUtils();
   const save = trpc.inventory.sales.save.useMutation({ onSuccess: () => utils.inventory.invalidate() });
-  const [values, setValues] = useState({ produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note });
-  useEffect(() => setValues({ produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note }), [row.produceQtyGrams, row.sellQtyGrams, row.note]);
-  const closing = row.openingQtyGrams + asNumber(values.produce) - asNumber(values.sell);
+  const [values, setValues] = useState({ opening: row.openingQtyGrams, reason: row.openingReason, produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note });
+  useEffect(() => setValues({ opening: row.openingQtyGrams, reason: row.openingReason, produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note }), [row.openingQtyGrams, row.openingReason, row.produceQtyGrams, row.sellQtyGrams, row.note]);
+  const openingChanged = String(values.opening) !== String(row.openingQtyGrams);
+  const closing = asNumber(values.opening) + asNumber(values.produce) - asNumber(values.sell);
   const total = Math.max(0, asNumber(values.sell)) * asNumber(row.sellingPricePerUnit);
-  return <tr><td><strong>{row.item.name}</strong></td><td>{unitLabel(row.item, row.openingQtyGrams)}</td><td><input min="0" step="0.001" type="number" value={values.produce} onChange={event => setValues({ ...values, produce: event.target.value })} /></td><td><input min="0" step="0.001" type="number" value={values.sell} onChange={event => setValues({ ...values, sell: event.target.value })} /></td><td>{unitLabel(row.item, closing)}</td><td>{money(row.sellingPricePerUnit)}</td><td>{money(total)}</td><td><input value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={save.isPending} onClick={() => save.mutate({ date: row.date, shopId, itemId: row.item.id, produceQtyGrams: Math.max(0, asNumber(values.produce)), sellQtyGrams: Math.max(0, asNumber(values.sell)), note: values.note || null })}>Save</button></td></tr>;
+  return <tr><td><strong>{row.item.name}</strong></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => setValues({ ...values, opening: event.target.value })} />{openingChanged && <input required disabled={isLocked} placeholder="Reason for Opening edit" value={values.reason} onChange={event => setValues({ ...values, reason: event.target.value })} />}</td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.produce} onChange={event => setValues({ ...values, produce: event.target.value })} /></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.sell} onChange={event => setValues({ ...values, sell: event.target.value })} /></td><td>{unitLabel(row.item, closing)}</td><td>{money(row.sellingPricePerUnit)}</td><td>{money(total)}</td><td><input disabled={isLocked} value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={isLocked || save.isPending || (openingChanged && !values.reason.trim())} onClick={() => save.mutate({ date: row.date, shopId, itemId: row.item.id, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams ?? null), openingReason: openingChanged ? values.reason.trim() : (row.openingReason || null), produceQtyGrams: Math.max(0, asNumber(values.produce)), sellQtyGrams: Math.max(0, asNumber(values.sell)), note: values.note || null })}>Save</button></td></tr>;
 }
 
 function SalesPage({ date }: { date: string }) {
   const shops = trpc.inventory.shops.list.useQuery();
+  const { user } = useAuth();
   const [shopId, setShopId] = useState<number | null>(null);
   useEffect(() => { if (shopId === null && shops.data?.[0]) setShopId(shops.data[0].id); }, [shops.data, shopId]);
   const daily = trpc.inventory.sales.daily.useQuery({ date, shopId: shopId ?? 1 }, { enabled: Boolean(shopId) });
-  return <><PageHeader title="Sale daily ledger" subtitle="Produce and Sell are entered manually. Closing = Opening + Produce − Sell." />
-    <Card className="toolbar-card"><label>Shop<select value={shopId ?? ""} onChange={event => setShopId(Number(event.target.value))}><option value="">Select a shop</option>{(shops.data ?? []).filter(shop => shop.active).map(shop => <option value={shop.id} key={shop.id}>{shop.name}</option>)}</select></label><p>Store-specific selling prices are managed in More → Shops.</p></Card>
-    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th></th></tr></thead><tbody>{(daily.data ?? []).map(row => <SalesRow key={row.item.id} row={row} shopId={shopId} />)}{!daily.data?.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card>}
+  const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: "sales" });
+  const utils = trpc.useUtils();
+  const lock = trpc.inventory.daily.lock.useMutation({ onSuccess: () => utils.inventory.invalidate() });
+  const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
+  const isLocked = Boolean(status.data?.locked);
+  const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: "sales" })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: "sales" })}>Lock day</button>}</span> : undefined;
+  return <><PageHeader title="Sale daily ledger" subtitle="Produce and Sell are entered manually. Closing carries forward as the next day Opening." action={action} />
+    <Card className="toolbar-card"><label>Shop<select value={shopId ?? ""} onChange={event => setShopId(Number(event.target.value))}><option value="">Select a shop</option>{(shops.data ?? []).filter(shop => shop.active).map(shop => <option value={shop.id} key={shop.id}>{shop.name}</option>)}</select></label><p>Store-specific selling prices are managed in More → Shops. {isLocked && <strong>This day is locked.</strong>}</p></Card>
+    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <><SpreadsheetPanel date={date} defaultKind="sales" shopIdOverride={shopId} /><Card className="table-card"><table><thead><tr><th>Name</th><th>Opening / Reason</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th></th></tr></thead><tbody>{(daily.data ?? []).map(row => <SalesRow key={row.item.id} row={row} shopId={shopId} isLocked={isLocked} />)}{!daily.data?.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card></>}
   </>;
 }
 
@@ -316,7 +350,7 @@ function BackupPanel() {
 }
 
 type ExchangeKind = "purchases" | "production" | "packaging" | "sales";
-function SpreadsheetPanel({ date }: { date: string }) {
+function SpreadsheetPanel({ date, defaultKind = "purchases", shopIdOverride }: { date: string; defaultKind?: ExchangeKind; shopIdOverride?: number | null }) {
   const utils = trpc.useUtils();
   const itemQuery = trpc.inventory.items.list.useQuery({ date });
   const purchaseQuery = trpc.inventory.purchases.list.useQuery();
@@ -324,10 +358,10 @@ function SpreadsheetPanel({ date }: { date: string }) {
   const packaging = trpc.inventory.operations.daily.useQuery({ date, type: "packaging" });
   const shopQuery = trpc.inventory.shops.list.useQuery();
   const [shopId, setShopId] = useState<number | null>(null);
-  useEffect(() => { if (shopId === null && shopQuery.data?.[0]) setShopId(shopQuery.data[0].id); }, [shopId, shopQuery.data]);
+  useEffect(() => { if (shopIdOverride !== undefined) setShopId(shopIdOverride); else if (shopId === null && shopQuery.data?.[0]) setShopId(shopQuery.data[0].id); }, [shopIdOverride, shopId, shopQuery.data]);
   const sales = trpc.inventory.sales.daily.useQuery({ date, shopId: shopId ?? 1 }, { enabled: Boolean(shopId) });
   const createPurchase = trpc.inventory.purchases.create.useMutation(); const saveOperation = trpc.inventory.operations.save.useMutation(); const saveSale = trpc.inventory.sales.save.useMutation();
-  const [kind, setKind] = useState<ExchangeKind>("purchases"); const [message, setMessage] = useState("");
+  const [kind, setKind] = useState<ExchangeKind>(defaultKind); const [message, setMessage] = useState("");
   const templateRows: Record<ExchangeKind, Record<string, unknown>[]> = {
     purchases: [{ Date: date, "Item ID": "", Qty: "", Unit: "kg", "Total Price": "", Status: "confirmed", Note: "" }],
     production: [{ Date: date, "Item ID": "", "Issued g": 0, "Return g": 0, "Damage g": 0, Note: "" }],
@@ -368,8 +402,17 @@ function SpreadsheetPanel({ date }: { date: string }) {
 
 function UploadIcon() { return <span aria-hidden="true">↑</span>; }
 
-function MorePage({ date }: { date: string }) {
-  return <><PageHeader title="More" subtitle="Administration, shop prices, recipes, backups, and spreadsheet exchange." /><div className="more-stack"><ShopPanel /><RecipeManager /><SpreadsheetPanel date={date} /><div className="two-panel"><AdminPanel /><BackupPanel /></div></div></>;
+type MoreSection = "shops" | "recipes" | "exchange" | "admin" | "backup";
+function MorePage({ date, goTo }: { date: string; goTo: (page: Page) => void }) {
+  const [section, setSection] = useState<MoreSection>("shops");
+  const buttons: Array<{ key: MoreSection; label: string; icon: typeof Store }> = [
+    { key: "shops", label: "Shops & prices", icon: Store },
+    { key: "recipes", label: "Recipes", icon: ClipboardList },
+    { key: "exchange", label: "Import / export", icon: FileSpreadsheet },
+    { key: "admin", label: "Admin panel", icon: Settings2 },
+    { key: "backup", label: "Backup", icon: ArchiveRestore },
+  ];
+  return <><PageHeader title="More" subtitle="Choose a feature to open its workspace." /><div className="more-menu-grid"><button onClick={() => goTo("items")}><Boxes size={19} /><strong>Item Dashboard</strong><span>Manage item lifecycle and ordering</span></button>{buttons.map(({ key, label, icon: Icon }) => <button key={key} className={section === key ? "active" : ""} onClick={() => setSection(key)}><Icon size={19} /><strong>{label}</strong><span>Open {label.toLowerCase()}</span></button>)}</div><div className="more-stack">{section === "shops" && <ShopPanel />}{section === "recipes" && <RecipeManager />}{section === "exchange" && <SpreadsheetPanel date={date} />}{section === "admin" && <AdminPanel />}{section === "backup" && <BackupPanel />}</div></>;
 }
 
 const navigation: Array<{ page: Page; label: string; icon: typeof Package }> = [
@@ -383,7 +426,7 @@ function ERPWorkspace() {
   const [from, setFrom] = useState(monthFirst());
   const [to, setTo] = useState(today());
   const heading = navigation.find(item => item.page === page)?.label ?? "Bakery ERP";
-  const content = page === "dashboard" ? <DashboardPage date={date} /> : page === "items" ? <ItemsPage date={date} isAdmin={user?.role === "admin"} /> : page === "purchases" ? <PurchasesPage date={date} /> : page === "production" ? <OperationsPage date={date} type="production" /> : page === "packaging" ? <OperationsPage date={date} type="packaging" /> : page === "sales" ? <SalesPage date={date} /> : page === "reports" ? <DetailedReports from={from} to={to} setFrom={setFrom} setTo={setTo} /> : <MorePage date={date} />;
+  const content = page === "dashboard" ? <DashboardPage date={date} /> : page === "items" ? <ItemsPage date={date} isAdmin={user?.role === "admin"} /> : page === "purchases" ? <PurchasesPage date={date} /> : page === "production" ? <OperationsPage date={date} type="production" /> : page === "packaging" ? <OperationsPage date={date} type="packaging" /> : page === "sales" ? <SalesPage date={date} /> : page === "reports" ? <DetailedReports from={from} to={to} setFrom={setFrom} setTo={setTo} /> : <MorePage date={date} goTo={setPage} />;
   return <div className="erp-shell"><header className="erp-topbar"><div><span className="brand-mark">B</span><div className="brand-copy"><strong>Bakery ERP</strong><small>{heading} · operational control</small></div></div><div className="top-actions"><DateControl value={date} onChange={setDate} /><button className="user-button" onClick={logout} title="Sign out"><span>{user?.name?.slice(0, 1).toUpperCase() || "U"}</span><LogOut size={15} /></button></div></header><main className="erp-main"><nav className="page-tabs" aria-label="Main navigation">{navigation.map(item => { const Icon = item.icon; return <button key={item.page} className={page === item.page ? "active" : ""} onClick={() => setPage(item.page)}><Icon size={15} />{item.label}</button>; })}</nav><div className="page-content">{content}</div></main></div>;
 }
 

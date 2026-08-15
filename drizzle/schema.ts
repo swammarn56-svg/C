@@ -82,6 +82,8 @@ export const operations = pgTable("operations", {
   issuedQtyGrams: decimal("issuedQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   returnQtyGrams: decimal("returnQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   damageQtyGrams: decimal("damageQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
+  openingOverrideQtyGrams: decimal("openingOverrideQtyGrams", { precision: 18, scale: 6 }),
+  openingReason: text("openingReason"),
   note: text("note"),
   createdBy: integer("createdBy").references(() => users.id),
   createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
@@ -118,6 +120,8 @@ export const salesEntries = pgTable("salesEntries", {
   produceQtyGrams: decimal("produceQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   sellQtyGrams: decimal("sellQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   sellingPricePerUnit: decimal("sellingPricePerUnit", { precision: 18, scale: 2 }).notNull().default("0"),
+  openingOverrideQtyGrams: decimal("openingOverrideQtyGrams", { precision: 18, scale: 6 }),
+  openingReason: text("openingReason"),
   note: text("note"),
   createdBy: integer("createdBy").references(() => users.id),
   createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
@@ -126,6 +130,28 @@ export const salesEntries = pgTable("salesEntries", {
   uniqueIndex("sales_date_shop_item_unique").on(table.saleDate, table.shopId, table.itemId),
   index("sales_item_date_idx").on(table.itemId, table.saleDate),
 ]);
+
+export const dailyLocks = pgTable("dailyLocks", {
+  id: serial("id").primaryKey(),
+  businessDate: date("businessDate", { mode: "date" }).notNull(),
+  ledgerType: varchar("ledgerType", { length: 32 }).notNull(),
+  locked: boolean("locked").notNull().default(false),
+  lockedBy: integer("lockedBy").references(() => users.id),
+  lockedAt: timestamp("lockedAt", { withTimezone: true }),
+  createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+}, table => [uniqueIndex("daily_locks_date_type_unique").on(table.businessDate, table.ledgerType)]);
+
+export const auditLogs = pgTable("auditLogs", {
+  id: serial("id").primaryKey(),
+  action: varchar("action", { length: 80 }).notNull(),
+  entityType: varchar("entityType", { length: 80 }).notNull(),
+  entityId: integer("entityId"),
+  businessDate: date("businessDate", { mode: "date" }),
+  details: text("details"),
+  createdBy: integer("createdBy").references(() => users.id),
+  createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+}, table => [index("audit_logs_date_idx").on(table.businessDate, table.createdAt)]);
 
 export const recipes = pgTable("recipes", {
   id: serial("id").primaryKey(),

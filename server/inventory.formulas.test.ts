@@ -37,6 +37,15 @@ describe("daily ledger formulas", () => {
   it("calculates the Sales closing balance", () => {
     expect(calculateSalesClosing(100, 80, 35)).toBe(145);
   });
+
+  it("carries an earlier corrected Closing into later Openings", () => {
+    const day12 = calculateOperationBalance({ openingQtyGrams: 100, inQtyGrams: 50, issuedQtyGrams: 20, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const day13FromOriginal = calculateOperationBalance({ openingQtyGrams: day12.closingQtyGrams, inQtyGrams: 0, issuedQtyGrams: 10, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const correctedDay12 = calculateOperationBalance({ openingQtyGrams: 200, inQtyGrams: 50, issuedQtyGrams: 20, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const day13FromCorrection = calculateOperationBalance({ openingQtyGrams: correctedDay12.closingQtyGrams, inQtyGrams: 0, issuedQtyGrams: 10, returnQtyGrams: 0, damageQtyGrams: 0 });
+    expect(day13FromOriginal.closingQtyGrams).toBe(120);
+    expect(day13FromCorrection.closingQtyGrams).toBe(220);
+  });
 });
 
 describe("monthly purchase average cost", () => {

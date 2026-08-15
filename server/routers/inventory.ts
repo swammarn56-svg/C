@@ -2,6 +2,8 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import {
+  auditLogs,
+  dailyLocks,
   items,
   operations,
   purchases,
@@ -50,11 +52,19 @@ const nextMonthStart = (date: string) => {
 
 function ensureEffective(item: { effectiveFrom: Date | string; inactiveFrom: Date | string | null }, date: string) {
   if (!isItemEffectiveOnDate(date, toDate(item.effectiveFrom), item.inactiveFrom ? toDate(item.inactiveFrom) : null)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "This item is not active for the selected business date.",
-    });
+    throw new TRPCError({ code: "BAD_REQUEST", message: "This item is not active for the selected business date." });
   }
+}
+
+async function assertDayOpen(date: string, ledgerType: string) {
+  const db = await requireDb();
+  const lock = await db.select({ locked: dailyLocks.locked }).from(dailyLocks).where(and(eq(dailyLocks.businessDate, dbDate(date)), eq(dailyLocks.ledgerType, ledgerType))).limit(1);
+  if (lock[0]?.locked) throw new TRPCError({ code: "FORBIDDEN", message: `The ${ledgerType} ledger is locked for ${date}. An administrator must reopen it first.` });
+}
+
+async function recordAudit(ctx: { user: { id: number } }, action: string, entityType: string, entityId: number | null, businessDate: string | null, details: Record<string, unknown>) {
+  const db = await requireDb();
+  await db.insert(auditLogs).values({ action, entityType, entityId, businessDate: businessDate ? dbDate(businessDate) : null, details: JSON.stringify(details), createdBy: ctx.user.id });
 }
 
 function publicItem<T extends typeof items.$inferSelect>(item: T, includeSalesCost = false) {
@@ -67,65 +77,47 @@ async function operationLedgerForDate(date: string, type: "production" | "packag
   const activeItems = await db
     .select()
     .from(items)
-    .where(
-      and(
-        eq(items.itemType, type),
-        lte(items.effectiveFrom, dbDate(date)),
-        or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(date))),
-      ),
-    )
+    .where(and(eq(items.itemType, type), lte(items.effectiveFrom, dbDate(date)), or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(date)))))
     .orderBy(asc(items.sortOrder), asc(items.name));
-
-  const [priorPurchases, sameDayPurchases, priorOperations, sameDayOperations] = await Promise.all([
-    db
-      .select({ itemId: purchases.itemId, quantityGrams: purchases.quantityGrams })
-      .from(purchases)
-      .innerJoin(items, eq(purchases.itemId, items.id))
-      .where(and(eq(items.itemType, type), eq(purchases.status, "confirmed"), lt(purchases.purchaseDate, dbDate(date)))),
-    db
-      .select({ itemId: purchases.itemId, quantityGrams: purchases.quantityGrams })
-      .from(purchases)
-      .innerJoin(items, eq(purchases.itemId, items.id))
-      .where(and(eq(items.itemType, type), eq(purchases.status, "confirmed"), eq(purchases.purchaseDate, dbDate(date)))),
-    db
-      .select()
-      .from(operations)
-      .where(and(eq(operations.operationType, type), lt(operations.operationDate, dbDate(date)))),
-    db
-      .select()
-      .from(operations)
-      .where(and(eq(operations.operationType, type), eq(operations.operationDate, dbDate(date)))),
+  const [allPurchases, allOperations] = await Promise.all([
+    db.select({ itemId: purchases.itemId, purchaseDate: purchases.purchaseDate, quantityGrams: purchases.quantityGrams })
+      .from(purchases).innerJoin(items, eq(purchases.itemId, items.id))
+      .where(and(eq(items.itemType, type), eq(purchases.status, "confirmed"), lte(purchases.purchaseDate, dbDate(date)))),
+    db.select().from(operations).where(and(eq(operations.operationType, type), lte(operations.operationDate, dbDate(date)))),
   ]);
-
-  const openingByItem = new Map<number, number>();
-  const inByItem = new Map<number, number>();
-  const rowByItem = new Map(sameDayOperations.map(row => [row.itemId, row]));
-  priorPurchases.forEach(row => openingByItem.set(row.itemId, (openingByItem.get(row.itemId) ?? 0) + number(row.quantityGrams)));
-  priorOperations.forEach(row =>
-    openingByItem.set(
-      row.itemId,
-      (openingByItem.get(row.itemId) ?? 0) + number(row.returnQtyGrams) - number(row.issuedQtyGrams),
-    ),
-  );
-  sameDayPurchases.forEach(row => inByItem.set(row.itemId, (inByItem.get(row.itemId) ?? 0) + number(row.quantityGrams)));
+  const purchaseByKey = new Map<string, number>();
+  allPurchases.forEach(row => {
+    const key = `${row.itemId}|${toDate(row.purchaseDate)}`;
+    purchaseByKey.set(key, (purchaseByKey.get(key) ?? 0) + number(row.quantityGrams));
+  });
+  const operationByKey = new Map<string, typeof allOperations[number]>();
+  allOperations.forEach(row => operationByKey.set(`${row.itemId}|${toDate(row.operationDate)}`, row));
+  const dates = Array.from(new Set([
+    date,
+    ...allPurchases.map(row => toDate(row.purchaseDate)),
+    ...allOperations.map(row => toDate(row.operationDate)),
+  ])).sort();
 
   return activeItems.map(item => {
-    const saved = rowByItem.get(item.id);
-    const amounts = {
-      openingQtyGrams: openingByItem.get(item.id) ?? 0,
-      inQtyGrams: inByItem.get(item.id) ?? 0,
-      issuedQtyGrams: number(saved?.issuedQtyGrams),
-      returnQtyGrams: number(saved?.returnQtyGrams),
-      damageQtyGrams: number(saved?.damageQtyGrams),
-    };
-    return {
-      item: publicItem(item),
-      operationId: saved?.id ?? null,
-      date,
-      note: saved?.note ?? "",
-      ...amounts,
-      ...calculateOperationBalance(amounts),
-    };
+    let opening = 0;
+    let result: any = null;
+    for (const currentDate of dates) {
+      const saved = operationByKey.get(`${item.id}|${currentDate}`);
+      if (saved?.openingOverrideQtyGrams !== null && saved?.openingOverrideQtyGrams !== undefined) opening = number(saved.openingOverrideQtyGrams);
+      const amounts = {
+        openingQtyGrams: opening,
+        inQtyGrams: purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0,
+        issuedQtyGrams: number(saved?.issuedQtyGrams),
+        returnQtyGrams: number(saved?.returnQtyGrams),
+        damageQtyGrams: number(saved?.damageQtyGrams),
+      };
+      const calculated = calculateOperationBalance(amounts);
+      if (currentDate === date) {
+        result = { item: publicItem(item), operationId: saved?.id ?? null, date, openingOverrideQtyGrams: saved?.openingOverrideQtyGrams ?? null, openingReason: saved?.openingReason ?? "", note: saved?.note ?? "", ...amounts, ...calculated };
+      }
+      opening = calculated.closingQtyGrams;
+    }
+    return result ?? { item: publicItem(item), operationId: null, date, openingOverrideQtyGrams: null, openingReason: "", note: "", openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0, ...calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0 }) };
   });
 }
 
@@ -338,11 +330,15 @@ export const inventoryRouter = router({
           issuedQtyGrams: nonNegative,
           returnQtyGrams: nonNegative,
           damageQtyGrams: nonNegative,
+          openingOverrideQtyGrams: nonNegative.optional().nullable(),
+          openingReason: z.string().trim().max(500).optional().nullable(),
           note: z.string().trim().max(2000).optional().nullable(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
+        await assertDayOpen(input.date, input.type);
+        if (input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined && !input.openingReason?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Opening edit reason is required." });
         const item = await db.select().from(items).where(eq(items.id, input.itemId)).limit(1);
         if (!item[0] || item[0].itemType !== input.type) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "The item does not belong to this ledger." });
@@ -357,6 +353,8 @@ export const inventoryRouter = router({
             issuedQtyGrams: input.issuedQtyGrams.toString(),
             returnQtyGrams: input.returnQtyGrams.toString(),
             damageQtyGrams: input.damageQtyGrams.toString(),
+            openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(),
+            openingReason: input.openingReason?.trim() || null,
             note: input.note || null,
             createdBy: ctx.user.id,
           })
@@ -366,12 +364,36 @@ export const inventoryRouter = router({
               issuedQtyGrams: input.issuedQtyGrams.toString(),
               returnQtyGrams: input.returnQtyGrams.toString(),
               damageQtyGrams: input.damageQtyGrams.toString(),
+              openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(),
+              openingReason: input.openingReason?.trim() || null,
               note: input.note || null,
               createdBy: ctx.user.id,
             },
           });
+        const saved = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.operationDate, dbDate(input.date)), eq(operations.itemId, input.itemId), eq(operations.operationType, input.type))).limit(1);
+        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "operation_save", "operations", saved[0]?.id ?? null, input.date, { itemId: input.itemId, type: input.type, reason: input.openingReason ?? null });
         return { success: true };
       }),
+  }),
+
+  daily: router({
+    status: protectedProcedure.input(z.object({ date: businessDate, ledgerType: z.enum(["production", "packaging", "sales"]) })).query(async ({ input }) => {
+      const db = await requireDb();
+      const row = await db.select().from(dailyLocks).where(and(eq(dailyLocks.businessDate, dbDate(input.date)), eq(dailyLocks.ledgerType, input.ledgerType))).limit(1);
+      return row[0] ?? { locked: false, businessDate: dbDate(input.date), ledgerType: input.ledgerType };
+    }),
+    lock: adminProcedure.input(z.object({ date: businessDate, ledgerType: z.enum(["production", "packaging", "sales"]) })).mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      await db.insert(dailyLocks).values({ businessDate: dbDate(input.date), ledgerType: input.ledgerType, locked: true, lockedBy: ctx.user.id, lockedAt: new Date() }).onConflictDoUpdate({ target: [dailyLocks.businessDate, dailyLocks.ledgerType], set: { locked: true, lockedBy: ctx.user.id, lockedAt: new Date() } });
+      await recordAudit(ctx, "daily_lock", "dailyLocks", null, input.date, { ledgerType: input.ledgerType });
+      return { success: true };
+    }),
+    reopen: adminProcedure.input(z.object({ date: businessDate, ledgerType: z.enum(["production", "packaging", "sales"]) })).mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      await db.update(dailyLocks).set({ locked: false, lockedBy: null, lockedAt: null }).where(and(eq(dailyLocks.businessDate, dbDate(input.date)), eq(dailyLocks.ledgerType, input.ledgerType)));
+      await recordAudit(ctx, "daily_reopen", "dailyLocks", null, input.date, { ledgerType: input.ledgerType });
+      return { success: true };
+    }),
   }),
 
   shops: router({
@@ -425,39 +447,37 @@ export const inventoryRouter = router({
           .from(items)
           .where(and(eq(items.itemType, "sales"), lte(items.effectiveFrom, dbDate(input.date)), or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(input.date)))))
           .orderBy(asc(items.sortOrder), asc(items.name));
-        const [previous, current, prices] = await Promise.all([
-          db.select().from(salesEntries).where(and(eq(salesEntries.shopId, input.shopId), lt(salesEntries.saleDate, dbDate(input.date)))),
-          db.select().from(salesEntries).where(and(eq(salesEntries.shopId, input.shopId), eq(salesEntries.saleDate, dbDate(input.date)))),
+        const [entries, prices] = await Promise.all([
+          db.select().from(salesEntries).where(and(eq(salesEntries.shopId, input.shopId), lte(salesEntries.saleDate, dbDate(input.date)))),
           db.select().from(shopItemPrices).where(and(eq(shopItemPrices.shopId, input.shopId), eq(shopItemPrices.active, true))),
         ]);
-        const opening = new Map<number, number>();
-        previous.forEach(row => opening.set(row.itemId, (opening.get(row.itemId) ?? 0) + number(row.produceQtyGrams) - number(row.sellQtyGrams)));
-        const currentByItem = new Map(current.map(row => [row.itemId, row]));
+        const entryByKey = new Map(entries.map(row => [`${row.itemId}|${toDate(row.saleDate)}`, row]));
+        const dates = Array.from(new Set([input.date, ...entries.map(row => toDate(row.saleDate))])).sort();
         const priceByItem = new Map(prices.map(row => [row.itemId, number(row.sellingPricePerUnit)]));
         return activeItems.map(item => {
-          const row = currentByItem.get(item.id);
-          const openingQtyGrams = opening.get(item.id) ?? 0;
-          const produceQtyGrams = number(row?.produceQtyGrams);
-          const sellQtyGrams = number(row?.sellQtyGrams);
-          const sellingPricePerUnit = number(row?.sellingPricePerUnit) || priceByItem.get(item.id) || 0;
-          return {
-            item: publicItem(item),
-            salesEntryId: row?.id ?? null,
-            date: input.date,
-            openingQtyGrams,
-            produceQtyGrams,
-            sellQtyGrams,
-            closingQtyGrams: calculateSalesClosing(openingQtyGrams, produceQtyGrams, sellQtyGrams),
-            sellingPricePerUnit,
-            totalPrice: sellQtyGrams * sellingPricePerUnit,
-            note: row?.note ?? "",
-          };
+          let opening = 0;
+          let result: any = null;
+          for (const currentDate of dates) {
+            const row = entryByKey.get(`${item.id}|${currentDate}`);
+            if (row?.openingOverrideQtyGrams !== null && row?.openingOverrideQtyGrams !== undefined) opening = number(row.openingOverrideQtyGrams);
+            const produceQtyGrams = number(row?.produceQtyGrams);
+            const sellQtyGrams = number(row?.sellQtyGrams);
+            const closingQtyGrams = calculateSalesClosing(opening, produceQtyGrams, sellQtyGrams);
+            if (currentDate === input.date) {
+              const sellingPricePerUnit = number(row?.sellingPricePerUnit) || priceByItem.get(item.id) || 0;
+              result = { item: publicItem(item), salesEntryId: row?.id ?? null, date: input.date, openingOverrideQtyGrams: row?.openingOverrideQtyGrams ?? null, openingQtyGrams: opening, openingReason: row?.openingReason ?? "", produceQtyGrams, sellQtyGrams, closingQtyGrams, sellingPricePerUnit, totalPrice: sellQtyGrams * sellingPricePerUnit, note: row?.note ?? "" };
+            }
+            opening = closingQtyGrams;
+          }
+          return result ?? { item: publicItem(item), salesEntryId: null, date: input.date, openingOverrideQtyGrams: null, openingQtyGrams: 0, openingReason: "", produceQtyGrams: 0, sellQtyGrams: 0, closingQtyGrams: 0, sellingPricePerUnit: priceByItem.get(item.id) ?? 0, totalPrice: 0, note: "" };
         });
       }),
     save: protectedProcedure
-      .input(z.object({ date: businessDate, shopId: z.number().int().positive(), itemId: z.number().int().positive(), produceQtyGrams: nonNegative, sellQtyGrams: nonNegative, note: z.string().trim().max(2000).optional().nullable() }))
+      .input(z.object({ date: businessDate, shopId: z.number().int().positive(), itemId: z.number().int().positive(), produceQtyGrams: nonNegative, sellQtyGrams: nonNegative, openingOverrideQtyGrams: nonNegative.optional().nullable(), openingReason: z.string().trim().max(500).optional().nullable(), note: z.string().trim().max(2000).optional().nullable() }))
       .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
+        await assertDayOpen(input.date, "sales");
+        if (input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined && !input.openingReason?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Opening edit reason is required." });
         const item = await db.select().from(items).where(eq(items.id, input.itemId)).limit(1);
         if (!item[0] || item[0].itemType !== "sales") throw new TRPCError({ code: "BAD_REQUEST", message: "The item does not belong to Sales." });
         ensureEffective(item[0], input.date);
@@ -466,8 +486,10 @@ export const inventoryRouter = router({
         const sellingPricePerUnit = number(price[0].sellingPricePerUnit);
         await db
           .insert(salesEntries)
-          .values({ ...input, saleDate: dbDate(input.date), produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id })
-          .onConflictDoUpdate({ target: [salesEntries.saleDate, salesEntries.shopId, salesEntries.itemId], set: { produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id } });
+          .values({ ...input, saleDate: dbDate(input.date), produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(), openingReason: input.openingReason?.trim() || null, sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id })
+          .onConflictDoUpdate({ target: [salesEntries.saleDate, salesEntries.shopId, salesEntries.itemId], set: { produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(), openingReason: input.openingReason?.trim() || null, sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id } });
+        const saved = await db.select({ id: salesEntries.id }).from(salesEntries).where(and(eq(salesEntries.saleDate, dbDate(input.date)), eq(salesEntries.shopId, input.shopId), eq(salesEntries.itemId, input.itemId))).limit(1);
+        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "sales_save", "salesEntries", saved[0]?.id ?? null, input.date, { itemId: input.itemId, shopId: input.shopId, reason: input.openingReason ?? null });
         return { success: true };
       }),
   }),
