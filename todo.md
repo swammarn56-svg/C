@@ -72,7 +72,7 @@
 - [x] Do not implement the previously discussed mobile-first table redesign.
 - [x] Preserve existing Opening overrides and reasons when editing other daily fields; add regression coverage for downstream recalculation.
 - [x] Bind the daily Sales import/export panel to the currently selected shop and verify exact date/shop scoping.
-- [ ] Verify automatic browser-side PWA service-worker registration and installability after the latest GitHub-triggered Netlify redeploy; manifest and service-worker HTTP responses are verified.
+- [x] Verify automatic browser-side PWA service-worker registration and installability after the latest Netlify production deployment; activated /sw.js, controlling scope, manifest, secure context, and installability event support were confirmed.
 - [x] Add an administrator-only manual In override for Production and Packaging; Reason is optional, automatic purchase In remains the default, and later carryforward balances recalculate.
 - [x] Add a visible Reset to purchase auto In action for Production and Packaging and test that clearing the override restores purchase-derived In and downstream carryforward.
 - [x] Add integration-level regression coverage proving that clearing a saved manual In override restores later-day purchase-derived carryforward balances.
