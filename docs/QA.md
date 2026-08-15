@@ -35,3 +35,21 @@ The source validation suite also performs a non-destructive Myanmar Unicode roun
 ## Source-only validation
 
 After the final workflow changes, `pnpm check` completed successfully and `pnpm test` completed with **12 passing tests across 4 files**.  No deployment command or application production-build command was run for this source-delivery request.
+
+## Authorised temporary live-data acceptance test
+
+On **2026-08-15**, an authorised temporary administrator session created uniquely labelled Unicode test records only.  The interface confirmed a `1 kg` Production purchase as `1,000 g`, a `20 pcs` Packaging purchase as `20 pcs` without gram conversion, Production `Used = 230 g` and `Closing = 750 g`, Packaging `Used = 6 pcs` and `Closing = 13 pcs`, and a shop-priced Sales row with `Produce = 10 pcs`, `Sell = 4 pcs`, `Closing = 6 pcs`, unit price `50.00`, and total price `200.00`.
+
+The Total Purchase Report displayed the temporary Myanmar text with total value `1,400.00`.  The Sales Item Report displayed the same Unicode item and shop name with sales value `200.00`.  Every temporary item, shop, purchase, operation, price, and sale was then deleted in dependency order.  A final database check confirmed zero temporary items, shops, purchases, operations, and sales remained, and the test user’s role was restored to `user`.
+
+## Live Unicode CSV import and export acceptance
+
+An additional temporary Production item with a Myanmar Unicode name was created for the spreadsheet flow.  A UTF-8 BOM CSV Purchase row containing the Unicode note `QA CSV ချို` was injected through the live Import / Export file-input path.  The interface reported `Imported 1 purchases record(s).` and the Purchase table rendered the Unicode item and note correctly, with `2 kg`, `2,000 g`, total price `60.00`, and `confirmed` status.  The same live row was exported with **Export CSV**; readback of the downloaded file confirmed both the Unicode item name and note were intact.
+
+The temporary import item and its Purchase row were deleted immediately after readback.  A final database check confirmed zero spreadsheet-test items and purchases remained, and the temporary administrator role was restored to `user`.
+
+## Live Unicode XLSX import and export acceptance
+
+The same isolated procedure was completed using a real XLSX workbook generated with the application’s loaded spreadsheet library.  The workbook contained a temporary Unicode item, the note `QA XLSX ချို`, and a confirmed `3 kg` Purchase row.  It was submitted through the live Import / Export file input, which reported `Imported 1 purchases record(s).`  The Purchase table then showed the expected `3,000 g` base quantity and total price `90.00`.
+
+The live **Export XLSX** action created an XLSX file.  Readback confirmed the Unicode item name and `QA XLSX ချို` note remained intact.  The temporary XLSX item and Purchase were then deleted; the final check returned zero remaining XLSX test records and restored the test user role to `user`.

@@ -35,4 +35,12 @@
 - [x] Run source type checking and tests without producing a deployable application build artifact.
 - [x] Create a GitHub-ready ZIP archive that excludes dependencies, build output, local logs, and secrets.
 - [x] Verify Myanmar Unicode CSV/XLSX import, UI/report display, and export round-trip without creating production records.
-- [ ] Run a live Unicode import-to-report acceptance check after an administrator supplies approved non-production test data.
+- [x] Run a live Unicode import-to-report acceptance check after an administrator supplies approved non-production test data.
+- [x] Temporarily grant the authorised test session the minimum administration access needed to create isolated test records.
+- [x] Create and verify a uniquely labelled Unicode item, shop, confirmed purchase, Production ledger row, Packaging ledger row, Sales row, report values, and CSV/XLSX exchange.
+- [x] Delete every uniquely labelled temporary test record and restore the original user role.
+- [x] Create isolated temporary data for a live Unicode CSV/XLSX import-to-report and export-readback acceptance check.
+- [x] Import a live Unicode spreadsheet row, verify it in the applicable UI/report, export it, and record the evidence.
+- [x] Delete the spreadsheet-exchange temporary records and restore the original user role after the live check.
+- [x] Run a live XLSX Unicode import and export acceptance check with isolated temporary data, then remove it.
+- [x] Re-read and confirm the completed live CSV/XLSX evidence in the QA record.
