@@ -103,16 +103,16 @@
 - [x] Live-test an Opening edit with and without an optional reason to confirm autosave, audit logging, and carryforward behavior.
 - [x] Verify automatic browser-side PWA service-worker registration and installability after the d82f63a deployment.
 
-- [ ] Live-test a deployed Opening edit without a reason, verify autosave persistence, audit-log creation, and next-day carryforward.
-- [ ] Live-test a deployed Opening edit with an optional reason, verify reason persistence on reload, audit-log context, and downstream carryforward.
+- [x] Live-test a deployed Opening edit without a reason, verify autosave persistence, audit-log creation, and next-day carryforward.
+- [x] Live-test a deployed Opening edit with an optional reason, verify reason persistence on reload, audit-log context, and downstream carryforward.
 
 - [x] Coerce persisted numeric ledger values to numbers in the client autosave payload so live Opening edits do not send inOverrideQtyGrams strings to the strict tRPC schema.
-- [ ] Redeploy and rerun the controlled live Opening autosave test, including no-reason and optional-reason persistence, downstream carryforward, audit-log checks, and restoration of the original value.
+- [x] Redeploy and rerun the controlled live Opening autosave test, including no-reason and optional-reason persistence, downstream carryforward, audit-log checks, and restoration of the original value.
 
 - [x] Fix the remaining live daily-table autosave failure so persisted numeric values are sent as numbers and no per-row Save action is required.
-- [ ] Re-run live Production, Packaging, and Sales autosave/date-change verification and resolve any remaining API or UI errors.
+- [x] Re-run live Production, Packaging, and Sales autosave/date-change verification and resolve any remaining API or UI errors.
 - [x] Confirm supplied Production and Packaging data is complete from 2026-08-01 onward, with no duplicate rows and verified Opening/In/Issued/Return/Damage/Closing balances.
-- [ ] Run the full final test suite and production build, save a final checkpoint, and provide the user with the Management UI Publish instruction.
+- [x] Run the full final test suite and production build, save a final checkpoint, and provide the user with the Management UI Publish instruction.
 
 - [x] Confirm the final daily-ledger UI contains no per-row manual Save action and uses automatic saving for Production, Packaging, and Sales.
 - [x] Prepare the corrected source for the user’s Netlify deployment only; do not publish or host it through Manus.
