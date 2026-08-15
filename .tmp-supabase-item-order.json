@@ -1,0 +1,1 @@
+{"project_id":"xtgxhwwmqotosmcdutqx","query":"SELECT id, name, \"itemType\" AS item_type, \"sortOrder\" AS sort_order FROM public.items WHERE \"itemType\" IN ('production', 'packaging') ORDER BY \"itemType\", \"sortOrder\", id LIMIT 500"}
