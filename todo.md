@@ -119,14 +119,15 @@
 
 - [x] Remove the visible "Reset to purchase auto In" control from Production and Packaging daily ledger rows while keeping automatic purchase-derived In behavior.
 - [x] Remove every row-level "Save" button from the mobile and desktop Production, Packaging, and Sales daily ledgers; retain debounced automatic saving with a non-button status label.
-- [ ] Verify the mobile daily ledger layout is built from the updated source and does not display legacy Save/reset controls.
-- [ ] Run tests and production build, then push the Netlify-ready correction to GitHub main for the user’s Netlify deployment.
+- [x] Verify the mobile daily ledger layout is built from the updated source and does not display legacy Save/reset controls.
+- [x] Run tests and production build, then push the Netlify-ready correction to GitHub main for the user’s Netlify deployment.
 - [x] Make confirmed Purchase records the sole source of Production and Packaging daily In quantities; a cancelled Purchase must remove its quantity from the relevant ledger and downstream carryforward without any manual In override or reset control.
 - [x] Ensure Production, Packaging, and Sales immediately clear stale rows and reload the selected business date on mobile and desktop without requiring a manual refresh.
-- [ ] Reconcile existing manual In overrides before enforcing purchase-only In and prove that cancelling a Purchase recalculates the same-day and later carryforward balances without altering unrelated historical records.
-- [ ] Remove all "Auto from purchase" text and hide the optional Opening reason field so daily ledgers display only the Opening input and a plain Purchase-derived In quantity.
-- [ ] Restore and preserve the user-provided Production and Packaging item sequence through Item Dashboard sort order so date changes and imports never reorder ledger rows unexpectedly.
-- [ ] Remove Import/Export panels from the Production, Packaging, and Sales daily pages and provide one More → Import/Export workspace with date and table selection for Purchase, Production, Packaging, and Sales.
+- [x] Reconcile existing manual In overrides before enforcing purchase-only In and prove that cancelling a Purchase recalculates the same-day and later carryforward balances without altering unrelated historical records.
+- [x] Convert verified historical In overrides into tagged confirmed Purchase records so the purchase-only In rule preserves imported August balances and carryforward.
+- [x] Remove all "Auto from purchase" text and hide the optional Opening reason field so daily ledgers display only the Opening input and a plain Purchase-derived In quantity.
+- [x] Restore and preserve the user-provided Production and Packaging item sequence through Item Dashboard sort order so date changes and imports never reorder ledger rows unexpectedly.
+- [x] Remove Import/Export panels from the Production, Packaging, and Sales daily pages and provide one More → Import/Export workspace with date and table selection for Purchase, Production, Packaging, and Sales.
 - [x] Create and present three mobile-friendly daily-ledger table design options, then implement only the user-selected design.
-- [ ] Keep the existing table design and make only the Name column sticky during horizontal scrolling, with no changes to the current ledger workflow.
+- [x] Keep the existing table design and make only the Name column sticky during horizontal scrolling, with no changes to the current ledger workflow.
 - [x] Reapply the exact Production and Packaging item sequences from the supplied original August CSV files to current item sort-order values without modifying ledger quantities or Purchase data.
