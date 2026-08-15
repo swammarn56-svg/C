@@ -1,5 +1,5 @@
 import { trpc } from "@/lib/trpc";
-import { Download } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
@@ -52,7 +52,7 @@ export default function DetailedReports({ from, to, setFrom, setTo }: { from: st
   const purchases = filtered.reduce((sum, row) => sum + number(row.purchaseCost), 0);
   const title: Record<ReportView, string> = { purchases: "Total Purchase Report", production: "Production Item Report", packaging: "Packaging Item Report", sales: "Sales Item Report", damage: "Damage Report" };
   return <>
-    <div className="page-header"><div><h1>Reports</h1><p>Dedicated date-range reports. Cost valuation uses purchase averages only within each calendar month.</p></div><button onClick={exportCurrent} disabled={!filtered.length}><Download size={15} /> Export report</button></div>
+    <div className="page-header"><div><h1>Reports</h1><p>Dedicated date-range reports. Cost valuation uses purchase averages only within each calendar month.</p></div><span className="header-actions"><button onClick={() => window.print()} disabled={!filtered.length}><Printer size={15} /> Print summary</button><button onClick={exportCurrent} disabled={!filtered.length}><Download size={15} /> Export report</button></span></div>
     <section className="toolbar-card report-filters"><label>From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><p>Damage and Used values use the same month’s average purchase cost.</p></section>
     <nav className="section-tabs" aria-label="Report types">{(["purchases", "production", "packaging", "sales", "damage"] as ReportView[]).map(value => <button key={value} className={value === view ? "active" : ""} onClick={() => setView(value)}>{title[value]}</button>)}</nav>
     {view === "purchases" && <section className="erp-card report-total"><strong>{money(purchases)}</strong><span>Total purchase value in selected period</span></section>}

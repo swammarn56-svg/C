@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import {
   auditLogs,
@@ -381,6 +381,40 @@ export const inventoryRouter = router({
         return { success: true };
       }),
   }),
+
+  audit: router({
+    list: adminProcedure
+      .input(z.object({ from: businessDate.optional(), to: businessDate.optional(), action: z.string().trim().max(80).optional(), actor: z.string().trim().max(160).optional(), entity: z.string().trim().max(80).optional(), details: z.string().trim().max(160).optional(), limit: z.number().int().min(1).max(200).default(100) }).optional())
+      .query(async ({ input }) => {
+        const db = await requireDb();
+        const filters = [
+          input?.from ? gte(auditLogs.businessDate, dbDate(input.from)) : undefined,
+          input?.to ? lte(auditLogs.businessDate, dbDate(input.to)) : undefined,
+          input?.action ? eq(auditLogs.action, input.action) : undefined,
+          input?.actor ? or(ilike(users.name, `%${input.actor}%`), ilike(users.email, `%${input.actor}%`)) : undefined,
+          input?.entity ? ilike(auditLogs.entityType, `%${input.entity}%`) : undefined,
+          input?.details ? ilike(auditLogs.details, `%${input.details}%`) : undefined,
+        ].filter(Boolean) as any[];
+        const rows = await db.select({ id: auditLogs.id, action: auditLogs.action, entityType: auditLogs.entityType, entityId: auditLogs.entityId, businessDate: auditLogs.businessDate, details: auditLogs.details, createdAt: auditLogs.createdAt, actorName: users.name, actorEmail: users.email }).from(auditLogs).leftJoin(users, eq(auditLogs.createdBy, users.id)).where(and(...filters)).orderBy(desc(auditLogs.createdAt)).limit(input?.limit ?? 100);
+        return rows;
+      }),
+  }),
+
+  search: protectedProcedure
+    .input(z.object({ query: z.string().trim().min(1).max(120) }))
+    .query(async ({ input }) => {
+      const db = await requireDb();
+      const term = `%${input.query}%`;
+      const [itemRows, shopRows, recipeRows, purchaseRows, operationRows, saleRows] = await Promise.all([
+        db.select({ id: items.id, name: items.name, code: items.code, category: items.category, effectiveFrom: items.effectiveFrom }).from(items).where(or(ilike(items.name, term), ilike(items.code, term), ilike(items.category, term))).orderBy(asc(items.name)).limit(30),
+        db.select({ id: shops.id, name: shops.name }).from(shops).where(ilike(shops.name, term)).orderBy(asc(shops.name)).limit(20),
+        db.select({ id: recipes.id, name: recipes.name, note: recipes.note }).from(recipes).where(or(ilike(recipes.name, term), ilike(recipes.note, term))).orderBy(asc(recipes.name)).limit(20),
+        db.select({ id: purchases.id, itemId: purchases.itemId, purchaseDate: purchases.purchaseDate, note: purchases.note }).from(purchases).where(ilike(purchases.note, term)).orderBy(desc(purchases.purchaseDate)).limit(20),
+        db.select({ id: operations.id, itemId: operations.itemId, operationDate: operations.operationDate, operationType: operations.operationType, note: operations.note }).from(operations).where(ilike(operations.note, term)).orderBy(desc(operations.operationDate)).limit(20),
+        db.select({ id: salesEntries.id, itemId: salesEntries.itemId, shopId: salesEntries.shopId, saleDate: salesEntries.saleDate, note: salesEntries.note }).from(salesEntries).where(ilike(salesEntries.note, term)).orderBy(desc(salesEntries.saleDate)).limit(20),
+      ]);
+      return { items: itemRows, shops: shopRows, recipes: recipeRows, records: [...purchaseRows.map(row => ({ ...row, kind: "Purchase" as const, date: row.purchaseDate })), ...operationRows.map(row => ({ ...row, kind: `${row.operationType} operation`, date: row.operationDate })), ...saleRows.map(row => ({ ...row, kind: "Sale" as const, date: row.saleDate }))].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 40) };
+    }),
 
   daily: router({
     status: protectedProcedure.input(z.object({ date: businessDate, ledgerType: z.enum(["production", "packaging", "sales"]) })).query(async ({ input }) => {

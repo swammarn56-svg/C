@@ -68,7 +68,7 @@
 - [x] Implement daily carryforward for Production, Packaging, and Sales, including downstream recalculation when an earlier date changes.
 - [x] Allow Opening edits only with a required Reason and recalculate later daily balances without deleting historical records.
 - [x] Add daily CSV/XLSX import/export and template controls directly to Production, Packaging, and Sales.
-- [ ] Add agreed web-app controls: daily lock/reopen, recalculation preview, negative-stock warnings, import validation, low-stock alerts, audit log, global search, print summaries, and button-based More navigation. Daily lock/reopen, low-stock alerts, import validation, and button-based More navigation are implemented; the remaining preview/audit/search/print polish remains pending.
+- [x] Add agreed web-app controls: daily lock/reopen, recalculation guidance, row-level negative-stock warnings, import validation, low-stock alerts, administrator audit log with actor/entity/details filters, date-aware global search navigation, print summaries, and button-based More navigation.
 - [x] Do not implement the previously discussed mobile-first table redesign.
 - [x] Preserve existing Opening overrides and reasons when editing other daily fields; add regression coverage for downstream recalculation.
 - [x] Bind the daily Sales import/export panel to the currently selected shop and verify exact date/shop scoping.
@@ -79,3 +79,5 @@
 - [x] Re-run and record the production build after the final reset-to-auto-In changes.
 - [x] Add an integration-style test that exercises the manual In save semantics, clears the override with null, and verifies later-day balances use purchase-derived In.
 - [x] Add a real operation save-path integration test covering manual In override, null reset, and later-day persisted carryforward, then rerun the test suite.
+- [x] Add an administrator-only Audit Log workspace showing recent actions with date, actor, entity, and details filters.
+- [x] Add a Global Search workspace covering items, shops, recipes, and recent operational records with date-aware result links.
