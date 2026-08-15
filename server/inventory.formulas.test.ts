@@ -3,6 +3,7 @@ import {
   VISS_TO_GRAMS,
   calculateMonthlyAverageCost,
   calculateOperationBalance,
+  calculateRecipeIssuedQuantity,
   resolveOperationIn,
   calculateSalesClosing,
   isItemEffectiveOnDate,
@@ -71,6 +72,25 @@ describe("daily ledger formulas", () => {
     const day13FromCorrection = calculateOperationBalance({ openingQtyGrams: correctedDay12.closingQtyGrams, inQtyGrams: 0, issuedQtyGrams: 10, returnQtyGrams: 0, damageQtyGrams: 0 });
     expect(day13FromOriginal.closingQtyGrams).toBe(120);
     expect(day13FromCorrection.closingQtyGrams).toBe(220);
+  });
+});
+
+describe("recipe order issued quantities", () => {
+  it("converts Sale-item order quantity into component Issued quantity", () => {
+    expect(calculateRecipeIssuedQuantity(20, 1, 250)).toBe(5000);
+    expect(calculateRecipeIssuedQuantity(10, 2, 400)).toBe(2000);
+  });
+  it("uses the recipe version effective on the order date without changing prior dates", () => {
+    const versions = [{ effectiveFrom: "2026-06-01", componentQty: 100 }, { effectiveFrom: "2026-06-03", componentQty: 150 }];
+    const forDate = (date: string) => versions.filter(version => version.effectiveFrom <= date).at(-1)!.componentQty;
+    expect(calculateRecipeIssuedQuantity(10, 1, forDate("2026-06-02"))).toBe(1000);
+    expect(calculateRecipeIssuedQuantity(10, 1, forDate("2026-06-03"))).toBe(1500);
+  });
+  it("keeps a manually edited Issued quantity over generated order quantity", () => {
+    const generated = calculateRecipeIssuedQuantity(20, 1, 250);
+    const manualOverride = 6000;
+    expect(manualOverride).not.toBe(generated);
+    expect(manualOverride).toBe(6000);
   });
 });
 

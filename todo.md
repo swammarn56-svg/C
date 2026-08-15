@@ -81,3 +81,10 @@
 - [x] Add a real operation save-path integration test covering manual In override, null reset, and later-day persisted carryforward, then rerun the test suite.
 - [x] Add an administrator-only Audit Log workspace showing recent actions with date, actor, entity, and details filters.
 - [x] Add a Global Search workspace covering items, shops, recipes, and recent operational records with date-aware result links.
+- [x] Add date-effective recipe versions with an Effective from date so edits only affect that date and later; earlier effective-date moves are rejected.
+- [x] Add an Order Table for Sales items with quantity and note, and generate recipe-based Production/Packaging Issued quantities by business date.
+- [x] Preserve manual Issued edits over generated order quantities and add regression coverage for order generation and historical recipe behavior.
+- [x] Add date-effective recipe versions with an Effective from date so edits only affect that date and later; earlier effective-date moves are rejected.
+- [x] Add an Order Table listing only Sale items from Item Dashboard, with order quantity and note fields.
+- [x] Generate recipe-based Production/Packaging Issued quantities from saved Sale-item orders by business date.
+- [x] Preserve manual Issued edits over generated order quantities and add regression coverage for order generation and historical recipe behavior.

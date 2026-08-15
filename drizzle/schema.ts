@@ -80,6 +80,7 @@ export const operations = pgTable("operations", {
   itemId: integer("itemId").notNull().references(() => items.id),
   operationType: operationType("operationType").notNull(),
   issuedQtyGrams: decimal("issuedQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
+  issuedOverrideQtyGrams: decimal("issuedOverrideQtyGrams", { precision: 18, scale: 6 }),
   returnQtyGrams: decimal("returnQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   damageQtyGrams: decimal("damageQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   inOverrideQtyGrams: decimal("inOverrideQtyGrams", { precision: 18, scale: 6 }),
@@ -164,7 +165,22 @@ export const recipes = pgTable("recipes", {
   createdBy: integer("createdBy").references(() => users.id),
   createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+  effectiveFrom: date("effectiveFrom", { mode: "date" }).notNull().default(new Date("1970-01-01T00:00:00.000Z")),
 });
+
+export const orders = pgTable("orders", {
+  id: serial("id").primaryKey(),
+  orderDate: date("orderDate", { mode: "date" }).notNull(),
+  salesItemId: integer("salesItemId").notNull().references(() => items.id),
+  quantity: decimal("quantity", { precision: 18, scale: 6 }).notNull().default("0"),
+  note: text("note"),
+  createdBy: integer("createdBy").references(() => users.id),
+  createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  uniqueIndex("orders_date_sales_item_unique").on(table.orderDate, table.salesItemId),
+  index("orders_date_idx").on(table.orderDate),
+]);
 
 export const recipeLines = pgTable("recipeLines", {
   id: serial("id").primaryKey(),

@@ -6,6 +6,7 @@ import {
   dailyLocks,
   items,
   operations,
+  orders,
   purchases,
   recipeLines,
   recipes,
@@ -17,6 +18,7 @@ import {
 import {
   calculateMonthlyAverageCost,
   calculateOperationBalance,
+  calculateRecipeIssuedQuantity,
   resolveOperationIn,
   calculateSalesClosing,
   displayQuantity,
@@ -73,6 +75,22 @@ function publicItem<T extends typeof items.$inferSelect>(item: T, includeSalesCo
   return item.itemType === "sales" && includeSalesCost ? { ...safeItem, costPerUnit } : safeItem;
 }
 
+function generatedIssuedMap(orderRows: Array<typeof orders.$inferSelect>, recipeRows: Array<typeof recipes.$inferSelect>, lineRows: Array<typeof recipeLines.$inferSelect>, componentRows: Array<typeof items.$inferSelect>, type: "production" | "packaging") {
+  const map = new Map<string, number>();
+  const componentsById = new Map(componentRows.map(item => [item.id, item]));
+  for (const order of orderRows) {
+    const recipe = recipeRows.filter(candidate => candidate.active && candidate.outputItemId === order.salesItemId && toDate(candidate.effectiveFrom) <= toDate(order.orderDate)).sort((a, b) => toDate(b.effectiveFrom).localeCompare(toDate(a.effectiveFrom)))[0];
+    if (!recipe || number(recipe.outputQuantityGrams) <= 0) continue;
+    for (const line of lineRows.filter(candidate => candidate.recipeId === recipe.id)) {
+      const component = componentsById.get(line.itemId);
+      if (!component || component.itemType !== type) continue;
+      const key = `${order.orderDate.toISOString().slice(0, 10)}|${line.itemId}`;
+      map.set(key, (map.get(key) ?? 0) + calculateRecipeIssuedQuantity(number(order.quantity), number(recipe.outputQuantityGrams), number(line.quantityGrams)));
+    }
+  }
+  return map;
+}
+
 async function operationLedgerForDate(date: string, type: "production" | "packaging") {
   const db = await requireDb();
   const activeItems = await db
@@ -80,11 +98,15 @@ async function operationLedgerForDate(date: string, type: "production" | "packag
     .from(items)
     .where(and(eq(items.itemType, type), lte(items.effectiveFrom, dbDate(date)), or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(date)))))
     .orderBy(asc(items.sortOrder), asc(items.name));
-  const [allPurchases, allOperations] = await Promise.all([
+  const [allPurchases, allOperations, allOrders, recipeRows, lineRows, componentRows] = await Promise.all([
     db.select({ itemId: purchases.itemId, purchaseDate: purchases.purchaseDate, quantityGrams: purchases.quantityGrams })
       .from(purchases).innerJoin(items, eq(purchases.itemId, items.id))
       .where(and(eq(items.itemType, type), eq(purchases.status, "confirmed"), lte(purchases.purchaseDate, dbDate(date)))),
     db.select().from(operations).where(and(eq(operations.operationType, type), lte(operations.operationDate, dbDate(date)))),
+    db.select().from(orders).where(lte(orders.orderDate, dbDate(date))),
+    db.select().from(recipes),
+    db.select().from(recipeLines),
+    db.select().from(items),
   ]);
   const purchaseByKey = new Map<string, number>();
   allPurchases.forEach(row => {
@@ -93,10 +115,12 @@ async function operationLedgerForDate(date: string, type: "production" | "packag
   });
   const operationByKey = new Map<string, typeof allOperations[number]>();
   allOperations.forEach(row => operationByKey.set(`${row.itemId}|${toDate(row.operationDate)}`, row));
+  const generatedByKey = generatedIssuedMap(allOrders, recipeRows, lineRows, componentRows, type);
   const dates = Array.from(new Set([
     date,
     ...allPurchases.map(row => toDate(row.purchaseDate)),
     ...allOperations.map(row => toDate(row.operationDate)),
+    ...allOrders.map(row => toDate(row.orderDate)),
   ])).sort();
 
   return activeItems.map(item => {
@@ -108,13 +132,13 @@ async function operationLedgerForDate(date: string, type: "production" | "packag
       const amounts = {
         openingQtyGrams: opening,
         inQtyGrams: resolveOperationIn(purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0, saved?.inOverrideQtyGrams === null || saved?.inOverrideQtyGrams === undefined ? null : number(saved.inOverrideQtyGrams)),
-        issuedQtyGrams: number(saved?.issuedQtyGrams),
+        issuedQtyGrams: saved?.issuedOverrideQtyGrams !== null && saved?.issuedOverrideQtyGrams !== undefined ? number(saved.issuedOverrideQtyGrams) : (generatedByKey.get(`${currentDate}|${item.id}`) ?? number(saved?.issuedQtyGrams)),
         returnQtyGrams: number(saved?.returnQtyGrams),
         damageQtyGrams: number(saved?.damageQtyGrams),
       };
       const calculated = calculateOperationBalance(amounts);
       if (currentDate === date) {
-        result = { item: publicItem(item), operationId: saved?.id ?? null, date, inOverrideQtyGrams: saved?.inOverrideQtyGrams ?? null, purchaseInQtyGrams: purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0, openingOverrideQtyGrams: saved?.openingOverrideQtyGrams ?? null, openingReason: saved?.openingReason ?? "", note: saved?.note ?? "", ...amounts, ...calculated };
+        result = { item: publicItem(item), operationId: saved?.id ?? null, date, issuedOverrideQtyGrams: saved?.issuedOverrideQtyGrams ?? null, inOverrideQtyGrams: saved?.inOverrideQtyGrams ?? null, purchaseInQtyGrams: purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0, openingOverrideQtyGrams: saved?.openingOverrideQtyGrams ?? null, openingReason: saved?.openingReason ?? "", note: saved?.note ?? "", ...amounts, ...calculated };
       }
       opening = calculated.closingQtyGrams;
     }
@@ -331,6 +355,7 @@ export const inventoryRouter = router({
           issuedQtyGrams: nonNegative,
           returnQtyGrams: nonNegative,
           damageQtyGrams: nonNegative,
+          issuedOverrideQtyGrams: nonNegative.optional().nullable(),
           inOverrideQtyGrams: nonNegative.optional().nullable(),
           openingOverrideQtyGrams: nonNegative.optional().nullable(),
           openingReason: z.string().trim().max(500).optional().nullable(),
@@ -355,6 +380,7 @@ export const inventoryRouter = router({
             itemId: input.itemId,
             operationType: input.type,
             issuedQtyGrams: input.issuedQtyGrams.toString(),
+            issuedOverrideQtyGrams: input.issuedOverrideQtyGrams === undefined ? existingOperation[0]?.issuedOverrideQtyGrams ?? null : input.issuedOverrideQtyGrams === null ? null : input.issuedOverrideQtyGrams.toString(),
             returnQtyGrams: input.returnQtyGrams.toString(),
             damageQtyGrams: input.damageQtyGrams.toString(),
             inOverrideQtyGrams: input.inOverrideQtyGrams === undefined ? existingOperation[0]?.inOverrideQtyGrams ?? null : input.inOverrideQtyGrams === null ? null : input.inOverrideQtyGrams.toString(),
@@ -367,6 +393,7 @@ export const inventoryRouter = router({
             target: [operations.operationDate, operations.itemId, operations.operationType],
             set: {
               issuedQtyGrams: input.issuedQtyGrams.toString(),
+              issuedOverrideQtyGrams: input.issuedOverrideQtyGrams === undefined ? existingOperation[0]?.issuedOverrideQtyGrams ?? null : input.issuedOverrideQtyGrams === null ? null : input.issuedOverrideQtyGrams.toString(),
               returnQtyGrams: input.returnQtyGrams.toString(),
               damageQtyGrams: input.damageQtyGrams.toString(),
               inOverrideQtyGrams: input.inOverrideQtyGrams === undefined ? existingOperation[0]?.inOverrideQtyGrams ?? null : input.inOverrideQtyGrams === null ? null : input.inOverrideQtyGrams.toString(),
@@ -544,15 +571,22 @@ export const inventoryRouter = router({
       return recipeRows.map(row => ({ ...row.recipe, outputItem: row.output ? publicItem(row.output) : null, lines: lineRows.filter(line => line.line.recipeId === row.recipe.id).map(line => ({ ...line.line, item: publicItem(line.item) })) }));
     }),
     save: adminProcedure
-      .input(z.object({ id: z.number().int().positive().optional(), name: z.string().trim().min(1).max(180), outputItemId: z.number().int().positive().optional().nullable(), outputQuantityGrams: positive, note: z.string().trim().max(2000).optional().nullable(), active: z.boolean().default(true), lines: z.array(z.object({ itemId: z.number().int().positive(), quantityGrams: positive })) }))
+      .input(z.object({ id: z.number().int().positive().optional(), name: z.string().trim().min(1).max(180), outputItemId: z.number().int().positive().optional().nullable(), outputQuantityGrams: positive, note: z.string().trim().max(2000).optional().nullable(), active: z.boolean().default(true), effectiveFrom: businessDate.default("1970-01-01"), lines: z.array(z.object({ itemId: z.number().int().positive(), quantityGrams: positive })) }))
       .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
         let recipeId = input.id;
         if (recipeId) {
-          await db.update(recipes).set({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active }).where(eq(recipes.id, recipeId));
-          await db.delete(recipeLines).where(eq(recipeLines.recipeId, recipeId));
+          const existing = await db.select().from(recipes).where(eq(recipes.id, recipeId)).limit(1);
+          if (existing[0] && input.effectiveFrom < toDate(existing[0].effectiveFrom)) throw new TRPCError({ code: "BAD_REQUEST", message: "Recipe effective date cannot move earlier; create a new version on or after the current effective date." });
+          if (existing[0] && input.effectiveFrom > toDate(existing[0].effectiveFrom)) {
+            const result = await db.insert(recipes).values({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active, effectiveFrom: dbDate(input.effectiveFrom), createdBy: ctx.user.id }).returning({ id: recipes.id });
+            recipeId = result[0]!.id;
+          } else {
+            await db.update(recipes).set({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active, effectiveFrom: dbDate(input.effectiveFrom) }).where(eq(recipes.id, recipeId));
+            await db.delete(recipeLines).where(eq(recipeLines.recipeId, recipeId));
+          }
         } else {
-          const result = await db.insert(recipes).values({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active, createdBy: ctx.user.id }).returning({ id: recipes.id });
+          const result = await db.insert(recipes).values({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active, effectiveFrom: dbDate(input.effectiveFrom), createdBy: ctx.user.id }).returning({ id: recipes.id });
           recipeId = result[0]!.id;
         }
         if (input.lines.length) await db.insert(recipeLines).values(input.lines.map(line => ({ recipeId: recipeId!, itemId: line.itemId, quantityGrams: line.quantityGrams.toString() })));
@@ -565,6 +599,24 @@ export const inventoryRouter = router({
         await db.delete(recipes).where(eq(recipes.id, input.id));
         return { success: true };
       }),
+  }),
+
+  orders: router({
+    daily: protectedProcedure.input(z.object({ date: businessDate })).query(async ({ input }) => {
+      const db = await requireDb();
+      const salesItems = await db.select().from(items).where(and(eq(items.itemType, "sales"), lte(items.effectiveFrom, dbDate(input.date)), or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(input.date))))).orderBy(asc(items.sortOrder), asc(items.name));
+      const saved = await db.select().from(orders).where(eq(orders.orderDate, dbDate(input.date)));
+      return salesItems.map(item => ({ item: publicItem(item, true), order: saved.find(row => row.salesItemId === item.id) ?? null }));
+    }),
+    save: protectedProcedure.input(z.object({ date: businessDate, salesItemId: z.number().int().positive(), quantity: nonNegative, note: z.string().trim().max(2000).optional().nullable() })).mutation(async ({ input, ctx }) => {
+      const db = await requireDb();
+      const item = await db.select().from(items).where(eq(items.id, input.salesItemId)).limit(1);
+      if (!item[0] || item[0].itemType !== "sales") throw new TRPCError({ code: "BAD_REQUEST", message: "Orders can only be placed for Sales items." });
+      ensureEffective(item[0], input.date);
+      await db.insert(orders).values({ orderDate: dbDate(input.date), salesItemId: input.salesItemId, quantity: input.quantity.toString(), note: input.note || null, createdBy: ctx.user.id }).onConflictDoUpdate({ target: [orders.orderDate, orders.salesItemId], set: { quantity: input.quantity.toString(), note: input.note || null, createdBy: ctx.user.id, updatedAt: new Date() } });
+      await recordAudit(ctx, "order_save", "orders", null, input.date, { salesItemId: input.salesItemId, quantity: input.quantity, note: input.note ?? null });
+      return { success: true };
+    }),
   }),
 
   dashboard: protectedProcedure.input(z.object({ date: businessDate })).query(async ({ input }) => {
@@ -677,8 +729,8 @@ export const inventoryRouter = router({
     }),
     backup: adminProcedure.query(async () => {
       const db = await requireDb();
-      const [itemRows, purchaseRows, operationRows, shopRows, priceRows, saleRows, recipeRows, lineRows] = await Promise.all([db.select().from(items), db.select().from(purchases), db.select().from(operations), db.select().from(shops), db.select().from(shopItemPrices), db.select().from(salesEntries), db.select().from(recipes), db.select().from(recipeLines)]);
-      return { exportedAt: new Date().toISOString(), items: itemRows, purchases: purchaseRows, operations: operationRows, shops: shopRows, shopItemPrices: priceRows, salesEntries: saleRows, recipes: recipeRows, recipeLines: lineRows };
+      const [itemRows, purchaseRows, operationRows, orderRows, shopRows, priceRows, saleRows, recipeRows, lineRows] = await Promise.all([db.select().from(items), db.select().from(purchases), db.select().from(operations), db.select().from(orders), db.select().from(shops), db.select().from(shopItemPrices), db.select().from(salesEntries), db.select().from(recipes), db.select().from(recipeLines)]);
+      return { exportedAt: new Date().toISOString(), items: itemRows, purchases: purchaseRows, operations: operationRows, orders: orderRows, shops: shopRows, shopItemPrices: priceRows, salesEntries: saleRows, recipes: recipeRows, recipeLines: lineRows };
     }),
   }),
 });

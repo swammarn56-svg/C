@@ -72,6 +72,13 @@ export function resolveOperationIn(purchaseInQtyGrams: number, inOverrideQtyGram
   return inOverrideQtyGrams === null || inOverrideQtyGrams === undefined ? purchaseInQtyGrams : inOverrideQtyGrams;
 }
 
+export function calculateRecipeIssuedQuantity(orderQuantity: number, recipeOutputQuantity: number, componentQuantity: number) {
+  if (!Number.isFinite(orderQuantity) || orderQuantity < 0) throw new Error("Order quantity cannot be negative.");
+  if (!Number.isFinite(recipeOutputQuantity) || recipeOutputQuantity <= 0) throw new Error("Recipe output quantity must be positive.");
+  if (!Number.isFinite(componentQuantity) || componentQuantity < 0) throw new Error("Recipe component quantity cannot be negative.");
+  return roundQuantity(orderQuantity * componentQuantity / recipeOutputQuantity);
+}
+
 export function calculateOperationBalance(amounts: OperationAmounts) {
   const usedQtyGrams = roundQuantity(
     amounts.issuedQtyGrams - amounts.returnQtyGrams - amounts.damageQtyGrams,
