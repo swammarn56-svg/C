@@ -17,7 +17,7 @@ export const userRole = pgEnum("user_role", ["user", "admin"]);
 export const itemType = pgEnum("item_type", ["production", "packaging", "sales"]);
 export const displayUnit = pgEnum("display_unit", ["g", "pcs"]);
 export const purchaseUnit = pgEnum("purchase_unit", ["g", "kg", "viss", "pcs"]);
-export const purchaseStatus = pgEnum("purchase_status", ["draft", "confirmed"]);
+export const purchaseStatus = pgEnum("purchase_status", ["draft", "confirmed", "cancelled"]);
 export const operationType = pgEnum("operation_type", ["production", "packaging"]);
 
 export const users = pgTable("users", {

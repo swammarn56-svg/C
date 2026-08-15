@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { Download, Printer } from "lucide-react";
+import { filterReportRowsByItem } from "../../../shared/reporting";
 import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
@@ -17,14 +18,13 @@ function exportRows(filename: string, rows: Record<string, unknown>[]) {
 
 export default function DetailedReports({ from, to, setFrom, setTo }: { from: string; to: string; setFrom: (value: string) => void; setTo: (value: string) => void }) {
   const [view, setView] = useState<ReportView>("purchases");
+  const [selectedItemId, setSelectedItemId] = useState("");
   const query = trpc.inventory.reports.summary.useQuery({ from, to });
   const rows = query.data?.perItem ?? [];
   const filtered = useMemo(() => {
-    if (view === "production" || view === "packaging") return rows.filter(row => row.item.itemType === view);
-    if (view === "sales") return rows.filter(row => row.item.itemType === "sales");
-    if (view === "damage") return rows.filter(row => number(row.damageQtyGrams) !== 0);
-    return rows;
-  }, [rows, view]);
+    const byView = view === "production" || view === "packaging" ? rows.filter(row => row.item.itemType === view) : view === "sales" ? rows.filter(row => row.item.itemType === "sales") : view === "damage" ? rows.filter(row => number(row.damageQtyGrams) !== 0) : rows;
+    return filterReportRowsByItem(byView, selectedItemId);
+  }, [rows, view, selectedItemId]);
   const exportCurrent = () => {
     const exported = filtered.map(row => ({
       Item: row.item.name,
@@ -53,7 +53,7 @@ export default function DetailedReports({ from, to, setFrom, setTo }: { from: st
   const title: Record<ReportView, string> = { purchases: "Total Purchase Report", production: "Production Item Report", packaging: "Packaging Item Report", sales: "Sales Item Report", damage: "Damage Report" };
   return <>
     <div className="page-header"><div><h1>Reports</h1><p>Dedicated date-range reports. Cost valuation uses purchase averages only within each calendar month.</p></div><span className="header-actions"><button onClick={() => window.print()} disabled={!filtered.length}><Printer size={15} /> Print summary</button><button onClick={exportCurrent} disabled={!filtered.length}><Download size={15} /> Export report</button></span></div>
-    <section className="toolbar-card report-filters"><label>From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><p>Damage and Used values use the same month’s average purchase cost.</p></section>
+    <section className="toolbar-card report-filters"><label>From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><label>Item<select value={selectedItemId} onChange={event => setSelectedItemId(event.target.value)}><option value="">All items</option>{rows.map(row => <option key={row.item.id} value={row.item.id}>{row.item.name}</option>)}</select></label>{selectedItemId && <button type="button" onClick={() => setSelectedItemId("")}>Clear item</button>}</section>
     <nav className="section-tabs" aria-label="Report types">{(["purchases", "production", "packaging", "sales", "damage"] as ReportView[]).map(value => <button key={value} className={value === view ? "active" : ""} onClick={() => setView(value)}>{title[value]}</button>)}</nav>
     {view === "purchases" && <section className="erp-card report-total"><strong>{money(purchases)}</strong><span>Total purchase value in selected period</span></section>}
     <section className="erp-card table-card"><table><thead>{view === "purchases" ? <tr><th>Item</th><th>Category</th><th>Purchase qty</th><th>Purchase total</th></tr> : view === "production" || view === "packaging" ? <tr><th>Item</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Avg cost</th><th>Used value</th><th>Closing value</th></tr> : view === "sales" ? <tr><th>Item</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Sales value</th><th>Shop sales</th></tr> : <tr><th>Item</th><th>Damage qty</th><th>Average purchase cost</th><th>Damage total price</th></tr>}</thead><tbody>

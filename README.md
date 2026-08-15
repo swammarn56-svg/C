@@ -53,6 +53,8 @@ On a supported mobile browser, open the Netlify site and choose **Add to Home sc
 
 The repository includes `netlify.toml` and a Netlify Function at `netlify/functions/api.ts`. Use build command `pnpm build`, publish directory `dist/public`, and functions directory `netlify/functions`. Configure the Supabase and OAuth-free environment variables in Netlify Site settings before deploying.
 
+After changing `VITE_SUPABASE_URL` or `VITE_SUPABASE_PUBLISHABLE_KEY` in Netlify, trigger a fresh production deploy so the browser bundle is rebuilt. The API function must be deployed through Netlify’s configured functions directory; a static ZIP upload alone does not package `netlify/functions/api.ts`.
+
 ## Spreadsheet exchange
 
 Purchase, Production, Packaging, and Sales tables support XLSX and CSV templates. CSV is generated with a UTF-8 BOM and the import path removes that BOM before parsing; this protects Myanmar Unicode values such as `ပေါင်မုန့်`, `ရန်ကုန်ဆိုင်`, and `ချို`.

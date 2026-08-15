@@ -7,15 +7,27 @@ import { ENV } from "./_core/env";
 let _pool: Pool | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
+export function normalizePostgresConnectionString(connectionString: string) {
+  const url = new URL(connectionString);
+  ["sslmode", "sslrootcert", "sslcert", "sslkey"].forEach(key => url.searchParams.delete(key));
+  return url.toString();
+}
+
+export function getPostgresPoolOptions(connectionString: string) {
+  return {
+    connectionString: normalizePostgresConnectionString(connectionString),
+    ssl: { rejectUnauthorized: false },
+    max: 1,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 10_000,
+  };
+}
+
 function getPool() {
   if (!_pool) {
     const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
     if (!connectionString) return null;
-    _pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-      max: 5,
-    });
+    _pool = new Pool(getPostgresPoolOptions(connectionString));
     _pool.on("error", error => console.error("[Database] PostgreSQL pool error:", error));
   }
   return _pool;

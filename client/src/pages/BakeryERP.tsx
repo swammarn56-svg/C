@@ -2,9 +2,11 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
 import { normalizeSpreadsheetBusinessDate, stripUtf8Bom, toUtf8BomCsv } from "../../../shared/spreadsheet";
+import { firstSpreadsheetValue, resolveProductionImportDate } from "../../../shared/productionImport";
+import { filterReportRowsByItem } from "../../../shared/reporting";
 import DetailedReports from "./DetailedReports";
 import RecipeManager from "./RecipeManager";
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import "./BakeryERP-more.css";
 import {
@@ -66,8 +68,8 @@ function Card({ children, className = "" }: { children: ReactNode; className?: s
   return <section className={`erp-card ${className}`}>{children}</section>;
 }
 
-function PageHeader({ title, subtitle, action }: { title: string; subtitle: string; action?: ReactNode }) {
-  return <div className="page-header"><div><h1>{title}</h1><p>{subtitle}</p></div>{action}</div>;
+function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+  return <div className="page-header"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>{action}</div>;
 }
 
 function DateControl({ value, onChange }: { value: string; onChange: (value: string) => void }) {
@@ -159,7 +161,7 @@ function ItemsPage({ date, isAdmin }: { date: string; isAdmin: boolean }) {
   };
   const showSalesCost = type === "sales" && isAdmin;
   return <>
-    <PageHeader title="Item Dashboard" subtitle="Date-effective master lists for Packaging, Production, and Sales." action={isAdmin ? <span className="header-actions"><button onClick={() => setIncludeInactive(!includeInactive)}>{includeInactive ? "Hide inactive" : "Show inactive"}</button><button className="primary-button" onClick={() => setEditing("new")}><Plus size={16} /> Add item</button></span> : <span className="read-only-label">Read-only access</span>} />
+    <PageHeader title="Item Dashboard" action={isAdmin ? <span className="header-actions"><button onClick={() => setIncludeInactive(!includeInactive)}>{includeInactive ? "Hide inactive" : "Show inactive"}</button><button className="primary-button" onClick={() => setEditing("new")}><Plus size={16} /> Add item</button></span> : <span className="read-only-label">Read-only access</span>} />
     <div className="section-tabs">{(["production", "packaging", "sales"] as ItemType[]).map(value => <button className={type === value ? "active" : ""} onClick={() => setType(value)} key={value}>{value[0].toUpperCase() + value.slice(1)}</button>)}</div>
     <Card className="table-card"><table><thead><tr><th>{isAdmin ? "Order" : ""}</th><th>Name</th><th>Category</th><th>Created</th><th>Start</th><th>Inactive from</th><th>Status</th><th>Minimum stock</th>{showSalesCost && <th>Cost per unit</th>}{isAdmin && <th>Action</th>}</tr></thead><tbody>
       {list.map((item, index) => { const salesCost = "costPerUnit" in item ? item.costPerUnit : null; const inactive = item.inactiveFrom && String(item.inactiveFrom).slice(0, 10) <= date; return <tr key={item.id}><td className="order-actions">{isAdmin && <><button disabled={index === 0} onClick={() => move(index, -1)} aria-label="Move up"><ArrowUp size={15} /></button><button disabled={index === list.length - 1} onClick={() => move(index, 1)} aria-label="Move down"><ArrowDown size={15} /></button></>}</td><td><strong>{item.name}</strong>{item.code && <small>{item.code}</small>}</td><td>{item.category || "—"}</td><td>{String(item.createdAt).slice(0, 10)}</td><td>{String(item.effectiveFrom).slice(0, 10)}</td><td>{item.inactiveFrom ? String(item.inactiveFrom).slice(0, 10) : "—"}</td><td><span className={inactive ? "status-muted" : "status-good"}>{inactive ? "Inactive" : "Active"}</span></td><td>{unitLabel(item, asNumber(item.minStockGrams))}</td>{showSalesCost && <td>{salesCost === null || salesCost === undefined ? "—" : money(salesCost)}</td>}{isAdmin && <td className="row-actions"><button onClick={() => setEditing(item)}>Rename / edit</button><button className="danger-button" onClick={() => setDeleting(item)}>Delete by date</button></td>}</tr>; })}
@@ -202,29 +204,46 @@ function PurchasesPage({ date }: { date: string }) {
   const [add, setAdd] = useState(false);
   const utils = trpc.useUtils();
   const confirm = trpc.inventory.purchases.confirm.useMutation({ onSuccess: () => utils.inventory.invalidate() });
+  const cancel = trpc.inventory.purchases.cancel.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const items = (allItems.data ?? []).filter(item => item.itemType === type);
   const rows = (purchaseQuery.data ?? []).filter(row => row.item.itemType === type);
   return <><PageHeader title="Purchase" subtitle="Confirmed purchase quantities feed the corresponding daily In balance." action={<button className="primary-button" onClick={() => setAdd(true)}><Plus size={16} /> Add purchase</button>} />
     <div className="section-tabs"><button className={type === "production" ? "active" : ""} onClick={() => setType("production")}>Production (g / kg / viss)</button><button className={type === "packaging" ? "active" : ""} onClick={() => setType("packaging")}>Packaging (pcs)</button></div>
-    <Card className="table-card"><table><thead><tr><th>Date</th><th>Name</th><th>Qty</th><th>Purchase unit</th><th>Base qty</th><th>Unit price</th><th>Total price</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{String(row.purchaseDate).slice(0, 10)}</td><td><strong>{row.item.name}</strong></td><td>{qty(row.inputQuantity)}</td><td>{row.inputUnit}</td><td>{qty(row.baseQuantity)} {row.baseUnit}</td><td>{money(row.unitCostPerGram)} / {row.baseUnit}</td><td>{money(row.totalCost)}</td><td><span className={row.status === "confirmed" ? "status-good" : "status-muted"}>{row.status}</span></td><td>{row.note || "—"}</td><td>{row.status === "draft" && <button onClick={() => confirm.mutate({ id: row.id })} disabled={confirm.isPending}>Confirm</button>}</td></tr>)}{!rows.length && <tr><td colSpan={10}><EmptyState>No {type} purchases recorded.</EmptyState></td></tr>}</tbody></table></Card>
+    <Card className="table-card"><table><thead><tr><th>Date</th><th>Name</th><th>Qty</th><th>Purchase unit</th><th>Base qty</th><th>Unit price</th><th>Total price</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{String(row.purchaseDate).slice(0, 10)}</td><td><strong>{row.item.name}</strong></td><td>{qty(row.inputQuantity)}</td><td>{row.inputUnit}</td><td>{qty(row.baseQuantity)} {row.baseUnit}</td><td>{money(row.unitCostPerGram)} / {row.baseUnit}</td><td>{money(row.totalCost)}</td><td><span className={row.status === "confirmed" ? "status-good" : row.status === "cancelled" ? "status-muted" : "status-muted"}>{row.status}</span></td><td>{row.note || "—"}</td><td className="row-actions">{row.status === "draft" && <button onClick={() => confirm.mutate({ id: row.id })} disabled={confirm.isPending}>Confirm</button>}{row.status === "confirmed" && <button className="danger-button" onClick={() => { const reason = window.prompt("Cancellation reason (optional)") ?? null; if (reason !== null) cancel.mutate({ id: row.id, reason }); }} disabled={cancel.isPending}>Cancel purchase</button>}</td></tr>)}{!rows.length && <tr><td colSpan={10}><EmptyState>No {type} purchases recorded.</EmptyState></td></tr>}</tbody></table></Card>
     {add && <PurchaseForm itemType={type} items={items} onClose={() => setAdd(false)} onDone={() => setAdd(false)} />}
   </>;
 }
 
 function OperationRow({ row, type, isLocked, isAdmin }: { row: any; type: OperationType; isLocked: boolean; isAdmin: boolean }) {
   const utils = trpc.useUtils();
-  const save = trpc.inventory.operations.save.useMutation({ onSuccess: () => utils.inventory.invalidate() });
+  const [saveState, setSaveState] = useState<"saved" | "pending" | "saving" | "error">("saved");
+  const save = trpc.inventory.operations.save.useMutation({ onSuccess: () => { setSaveState("saved"); utils.inventory.invalidate(); }, onError: () => setSaveState("error") });
   const [resetIn, setResetIn] = useState(false);
   const [values, setValues] = useState({ opening: row.openingQtyGrams, reason: row.openingReason, inQty: row.inQtyGrams, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note });
-  useEffect(() => { setResetIn(false); setValues({ opening: row.openingQtyGrams, reason: row.openingReason, inQty: row.inQtyGrams, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note }); }, [row.openingQtyGrams, row.openingReason, row.inQtyGrams, row.issuedQtyGrams, row.returnQtyGrams, row.damageQtyGrams, row.note]);
+  const requestKey = useRef(0);
+  useEffect(() => { setResetIn(false); setSaveState("saved"); setValues({ opening: row.openingQtyGrams, reason: row.openingReason, inQty: row.inQtyGrams, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note }); }, [row.date, row.item.id, row.openingQtyGrams, row.openingReason, row.inQtyGrams, row.issuedQtyGrams, row.returnQtyGrams, row.damageQtyGrams, row.note]);
   const used = asNumber(values.issued) - asNumber(values.returned) - asNumber(values.damage);
   const inChanged = String(values.inQty) !== String(row.inQtyGrams);
   const closing = asNumber(values.opening) + asNumber(values.inQty) + asNumber(values.returned) - asNumber(values.issued);
   const openingChanged = String(values.opening) !== String(row.openingQtyGrams);
   const issuedChanged = String(values.issued) !== String(row.issuedQtyGrams);
-  const field = (key: "issued" | "returned" | "damage") => <input disabled={isLocked} min="0" step="0.001" type="number" value={values[key]} onChange={event => setValues({ ...values, [key]: event.target.value })} />;
+  const openingReasonChanged = String(values.reason ?? "") !== String(row.openingReason ?? "");
+  const hasChanges = openingChanged || openingReasonChanged || inChanged || issuedChanged || String(values.returned) !== String(row.returnQtyGrams) || String(values.damage) !== String(row.damageQtyGrams) || String(values.note ?? "") !== String(row.note ?? "");
+  const payload = { date: row.date, itemId: row.item.id, type, issuedOverrideQtyGrams: issuedChanged ? Math.max(0, asNumber(values.issued)) : (row.issuedOverrideQtyGrams == null ? null : asNumber(row.issuedOverrideQtyGrams)), inOverrideQtyGrams: isAdmin ? (resetIn ? null : inChanged ? Math.max(0, asNumber(values.inQty)) : (row.inOverrideQtyGrams == null ? null : asNumber(row.inOverrideQtyGrams))) : undefined, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams == null ? null : asNumber(row.openingOverrideQtyGrams)), openingReason: (openingChanged || row.openingOverrideQtyGrams !== null && row.openingOverrideQtyGrams !== undefined) ? (values.reason?.trim() || null) : (row.openingReason || null), issuedQtyGrams: Math.max(0, asNumber(values.issued)), returnQtyGrams: Math.max(0, asNumber(values.returned)), damageQtyGrams: Math.max(0, asNumber(values.damage)), note: values.note || null };
+  const payloadSignature = JSON.stringify(payload);
+  useEffect(() => {
+    if (isLocked || !hasChanges) return;
+    const timer = window.setTimeout(() => {
+      const key = ++requestKey.current;
+      setSaveState("saving");
+      save.mutate(payload, { onSuccess: () => { if (key === requestKey.current) { setSaveState("saved"); utils.inventory.invalidate(); } }, onError: () => { if (key === requestKey.current) setSaveState("error"); } });
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [hasChanges, isLocked, payloadSignature]);
+  const change = (patch: Partial<typeof values>) => { setSaveState("pending"); setValues(current => ({ ...current, ...patch })); };
+  const field = (key: "issued" | "returned" | "damage") => <input disabled={isLocked} min="0" step="0.001" type="number" value={values[key]} onChange={event => { setSaveState("pending"); setValues(current => ({ ...current, [key]: event.target.value })); }} />;
   const negative = closing < 0;
-  return <tr className={negative ? "negative-stock-row" : undefined}><td><strong>{row.item.name}</strong>{negative && <span className="row-warning" role="alert">Below zero</span>}<small>{row.item.displayUnit}</small></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => setValues({ ...values, opening: event.target.value })} />{openingChanged && <input required disabled={isLocked} placeholder="Reason for Opening edit" value={values.reason} onChange={event => setValues({ ...values, reason: event.target.value })} />}</td><td>{isAdmin ? <><input disabled={isLocked} min="0" step="0.001" type="number" value={values.inQty} onChange={event => { setResetIn(false); setValues({ ...values, inQty: event.target.value }); }} />{row.inOverrideQtyGrams !== null && row.inOverrideQtyGrams !== undefined ? <button type="button" disabled={isLocked} onClick={() => { setResetIn(true); setValues({ ...values, inQty: row.purchaseInQtyGrams }); }}>Reset to purchase auto In</button> : <small>Auto from purchase</small>}</> : unitLabel(row.item, row.inQtyGrams)}</td><td>{field("issued")}</td><td>{field("returned")}</td><td>{field("damage")}</td><td>{unitLabel(row.item, used)}</td><td>{unitLabel(row.item, closing)}</td><td><input disabled={isLocked} value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={isLocked || save.isPending || (openingChanged && !values.reason.trim())} onClick={() => save.mutate({ date: row.date, itemId: row.item.id, type, issuedOverrideQtyGrams: issuedChanged ? Math.max(0, asNumber(values.issued)) : (row.issuedOverrideQtyGrams ?? null), inOverrideQtyGrams: isAdmin ? (resetIn ? null : inChanged ? Math.max(0, asNumber(values.inQty)) : (row.inOverrideQtyGrams ?? null)) : undefined, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams ?? null), openingReason: openingChanged ? values.reason.trim() : (row.openingReason || null), issuedQtyGrams: Math.max(0, asNumber(values.issued)), returnQtyGrams: Math.max(0, asNumber(values.returned)), damageQtyGrams: Math.max(0, asNumber(values.damage)), note: values.note || null })}>Save</button></td></tr>;
+  return <tr className={negative ? "negative-stock-row" : undefined}><td><strong>{row.item.name}</strong>{negative && <span className="row-warning" role="alert">Below zero</span>}<small>{row.item.displayUnit}</small></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => change({ opening: event.target.value })} /><input disabled={isLocked} aria-label="Optional Opening reason" placeholder="Reason (optional)" value={values.reason ?? ""} onChange={event => change({ reason: event.target.value })} /></td><td>{isAdmin ? <><input disabled={isLocked} min="0" step="0.001" type="number" value={values.inQty} onChange={event => { setResetIn(false); change({ inQty: event.target.value }); }} />{row.inOverrideQtyGrams !== null && row.inOverrideQtyGrams !== undefined ? <button type="button" disabled={isLocked} onClick={() => { setResetIn(true); change({ inQty: row.purchaseInQtyGrams }); }}>Reset to purchase auto In</button> : <small>Auto from purchase</small>}</> : unitLabel(row.item, row.inQtyGrams)}</td><td>{field("issued")}</td><td>{field("returned")}</td><td>{field("damage")}</td><td>{unitLabel(row.item, used)}</td><td>{unitLabel(row.item, closing)}</td><td><input disabled={isLocked} value={values.note} onChange={event => change({ note: event.target.value })} /></td><td><small className={saveState === "error" ? "warning-text" : "muted"} aria-live="polite">{isLocked ? "Locked" : saveState === "saving" ? "Saving…" : saveState === "pending" ? "Saving soon…" : saveState === "error" ? "Save failed" : "Saved"}</small></td></tr>;
 }
 
 function OperationsPage({ date, type }: { date: string; type: OperationType }) {
@@ -236,24 +255,41 @@ function OperationsPage({ date, type }: { date: string; type: OperationType }) {
   const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const label = type[0].toUpperCase() + type.slice(1);
   const isLocked = Boolean(status.data?.locked);
-  const negativeCount = (query.data ?? []).filter(row => asNumber(row.closingQtyGrams) < 0).length;
+  const rows = query.data ?? [];
+  const negativeCount = rows.filter(row => asNumber(row.closingQtyGrams) < 0).length;
   const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: type })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: type })}>Lock day</button>}</span> : undefined;
-  return <><PageHeader title={`${label} daily ledger`} subtitle="Used = Issued − Return − Damage. Closing carries forward as the next day Opening." action={action} />
-    <Card className="formula-note"><strong>In</strong> is automatically sourced from purchases entered for this date. Opening edits require a reason and recalculate later days. Saving an earlier date refreshes downstream Opening/Closing values. {negativeCount > 0 && <strong className="warning-text"> {negativeCount} item balance(s) are below zero.</strong>} {isLocked && <strong> This day is locked.</strong>}</Card>
+  return <><PageHeader title={`${label} daily ledger`} action={action} />
+    {(negativeCount > 0 || isLocked) && <Card className="ledger-status">{negativeCount > 0 && <strong className="warning-text">{negativeCount} item balance(s) are below zero.</strong>} {isLocked && <strong>This day is locked.</strong>}</Card>}
     <SpreadsheetPanel date={date} defaultKind={type} />
-    <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening / Reason</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th></th></tr></thead><tbody>{(query.data ?? []).map(row => <OperationRow key={row.item.id} row={row} type={type} isLocked={isLocked} isAdmin={user?.role === "admin"} />)}{!query.data?.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
+    <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th>Status</th></tr></thead><tbody>{query.isLoading ? <tr><td colSpan={10}><EmptyState>Loading {label.toLowerCase()} rows for {date}…</EmptyState></td></tr> : rows.map(row => <OperationRow key={`${date}-${row.item.id}`} row={row} type={type} isLocked={isLocked} isAdmin={user?.role === "admin"} />)}{!query.isLoading && !rows.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
   </>;
 }
 
 function SalesRow({ row, shopId, isLocked }: { row: any; shopId: number; isLocked: boolean }) {
   const utils = trpc.useUtils();
-  const save = trpc.inventory.sales.save.useMutation({ onSuccess: () => utils.inventory.invalidate() });
+  const [saveState, setSaveState] = useState<"saved" | "pending" | "saving" | "error">("saved");
+  const save = trpc.inventory.sales.save.useMutation({ onSuccess: () => { setSaveState("saved"); utils.inventory.invalidate(); }, onError: () => setSaveState("error") });
   const [values, setValues] = useState({ opening: row.openingQtyGrams, reason: row.openingReason, produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note });
-  useEffect(() => setValues({ opening: row.openingQtyGrams, reason: row.openingReason, produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note }), [row.openingQtyGrams, row.openingReason, row.produceQtyGrams, row.sellQtyGrams, row.note]);
+  const requestKey = useRef(0);
+  useEffect(() => { setSaveState("saved"); setValues({ opening: row.openingQtyGrams, reason: row.openingReason, produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note }); }, [row.date, row.item.id, row.openingQtyGrams, row.openingReason, row.produceQtyGrams, row.sellQtyGrams, row.note]);
   const openingChanged = String(values.opening) !== String(row.openingQtyGrams);
   const closing = asNumber(values.opening) + asNumber(values.produce) - asNumber(values.sell);
   const total = Math.max(0, asNumber(values.sell)) * asNumber(row.sellingPricePerUnit);
-  return <tr><td><strong>{row.item.name}</strong></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => setValues({ ...values, opening: event.target.value })} />{openingChanged && <input required disabled={isLocked} placeholder="Reason for Opening edit" value={values.reason} onChange={event => setValues({ ...values, reason: event.target.value })} />}</td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.produce} onChange={event => setValues({ ...values, produce: event.target.value })} /></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.sell} onChange={event => setValues({ ...values, sell: event.target.value })} /></td><td>{unitLabel(row.item, closing)}</td><td>{money(row.sellingPricePerUnit)}</td><td>{money(total)}</td><td><input disabled={isLocked} value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={isLocked || save.isPending || (openingChanged && !values.reason.trim())} onClick={() => save.mutate({ date: row.date, shopId, itemId: row.item.id, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams ?? null), openingReason: openingChanged ? values.reason.trim() : (row.openingReason || null), produceQtyGrams: Math.max(0, asNumber(values.produce)), sellQtyGrams: Math.max(0, asNumber(values.sell)), note: values.note || null })}>Save</button></td></tr>;
+  const openingReasonChanged = String(values.reason ?? "") !== String(row.openingReason ?? "");
+  const hasChanges = openingChanged || openingReasonChanged || String(values.produce) !== String(row.produceQtyGrams) || String(values.sell) !== String(row.sellQtyGrams) || String(values.note ?? "") !== String(row.note ?? "");
+  const payload = { date: row.date, shopId, itemId: row.item.id, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams ?? null), openingReason: (openingChanged || row.openingOverrideQtyGrams !== null && row.openingOverrideQtyGrams !== undefined) ? (values.reason?.trim() || null) : (row.openingReason || null), produceQtyGrams: Math.max(0, asNumber(values.produce)), sellQtyGrams: Math.max(0, asNumber(values.sell)), note: values.note || null };
+  const payloadSignature = JSON.stringify(payload);
+  useEffect(() => {
+    if (isLocked || !hasChanges) return;
+    const timer = window.setTimeout(() => {
+      const key = ++requestKey.current;
+      setSaveState("saving");
+      save.mutate(payload, { onSuccess: () => { if (key === requestKey.current) { setSaveState("saved"); utils.inventory.invalidate(); } }, onError: () => { if (key === requestKey.current) setSaveState("error"); } });
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [hasChanges, isLocked, payloadSignature]);
+  const change = (patch: Partial<typeof values>) => { setSaveState("pending"); setValues(current => ({ ...current, ...patch })); };
+  return <tr><td><strong>{row.item.name}</strong></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => change({ opening: event.target.value })} /><input disabled={isLocked} aria-label="Optional Opening reason" placeholder="Reason (optional)" value={values.reason ?? ""} onChange={event => change({ reason: event.target.value })} /></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.produce} onChange={event => change({ produce: event.target.value })} /></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.sell} onChange={event => change({ sell: event.target.value })} /></td><td>{unitLabel(row.item, closing)}</td><td>{money(row.sellingPricePerUnit)}</td><td>{money(total)}</td><td><input disabled={isLocked} value={values.note} onChange={event => change({ note: event.target.value })} /></td><td><small className={saveState === "error" ? "warning-text" : "muted"} aria-live="polite">{isLocked ? "Locked" : saveState === "saving" ? "Saving…" : saveState === "pending" ? "Saving soon…" : saveState === "error" ? "Save failed" : "Saved"}</small></td></tr>;
 }
 
 function SalesPage({ date }: { date: string }) {
@@ -268,9 +304,9 @@ function SalesPage({ date }: { date: string }) {
   const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const isLocked = Boolean(status.data?.locked);
   const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: "sales" })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: "sales" })}>Lock day</button>}</span> : undefined;
-  return <><PageHeader title="Sale daily ledger" subtitle="Produce and Sell are entered manually. Closing carries forward as the next day Opening." action={action} />
-    <Card className="toolbar-card"><label>Shop<select value={shopId ?? ""} onChange={event => setShopId(Number(event.target.value))}><option value="">Select a shop</option>{(shops.data ?? []).filter(shop => shop.active).map(shop => <option value={shop.id} key={shop.id}>{shop.name}</option>)}</select></label><p>Store-specific selling prices are managed in More → Shops. {isLocked && <strong>This day is locked.</strong>}</p></Card>
-    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <><SpreadsheetPanel date={date} defaultKind="sales" shopIdOverride={shopId} /><Card className="table-card"><table><thead><tr><th>Name</th><th>Opening / Reason</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th></th></tr></thead><tbody>{(daily.data ?? []).map(row => <SalesRow key={row.item.id} row={row} shopId={shopId} isLocked={isLocked} />)}{!daily.data?.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card></>}
+  return <><PageHeader title="Sale daily ledger" action={action} />
+    <Card className="toolbar-card"><label>Shop<select value={shopId ?? ""} onChange={event => setShopId(Number(event.target.value))}><option value="">Select a shop</option>{(shops.data ?? []).filter(shop => shop.active).map(shop => <option value={shop.id} key={shop.id}>{shop.name}</option>)}</select></label>{isLocked && <strong>This day is locked.</strong>}</Card>
+    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <><SpreadsheetPanel date={date} defaultKind="sales" shopIdOverride={shopId} /><Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th>Status</th></tr></thead><tbody>{daily.isLoading ? <tr><td colSpan={9}><EmptyState>Loading sales rows for {date}…</EmptyState></td></tr> : (daily.data ?? []).map(row => <SalesRow key={`${date}-${shopId}-${row.item.id}`} row={row} shopId={shopId} isLocked={isLocked} />)}{!daily.isLoading && !daily.data?.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card></>}
   </>;
 }
 
@@ -285,10 +321,14 @@ function DashboardPage({ date }: { date: string }) {
 
 function ReportsPage({ from, to, setFrom, setTo }: { from: string; to: string; setFrom: (value: string) => void; setTo: (value: string) => void }) {
   const query = trpc.inventory.reports.summary.useQuery({ from, to });
-  const exportReport = () => downloadWorkbook(`bakery-report-${from}-to-${to}`, [{ name: "Item report", rows: (query.data?.perItem ?? []).map(row => ({ Item: row.item.name, List: row.item.itemType, "Purchase Qty g": row.purchaseQtyGrams, "Purchase Cost": row.purchaseCost, "Used Qty g": row.usedQtyGrams, "Used Value": row.usedValue, "Damage Qty g": row.damageQtyGrams, "Damage Value": row.damageValue, "Produce Qty g": row.produceQtyGrams, "Sell Qty g": row.sellQtyGrams, "Sales Value": row.salesValue })) }]);
+  const rows = query.data?.perItem ?? [];
+  const [selectedItemId, setSelectedItemId] = useState("");
+  const selected = rows.find(row => String(row.item.id) === selectedItemId);
+  const visibleRows = filterReportRowsByItem(rows, selectedItemId);
+  const exportReport = () => downloadWorkbook(`bakery-report-${from}-to-${to}`, [{ name: "Item report", rows: visibleRows.map(row => ({ Item: row.item.name, List: row.item.itemType, "Purchase Qty g": row.purchaseQtyGrams, "Purchase Cost": row.purchaseCost, "Used Qty g": row.usedQtyGrams, "Used Value": row.usedValue, "Damage Qty g": row.damageQtyGrams, "Damage Value": row.damageValue, "Produce Qty g": row.produceQtyGrams, "Sell Qty g": row.sellQtyGrams, "Sales Value": row.salesValue })) }]);
   return <><PageHeader title="Reports" subtitle="Date-range reports valued with the purchase average cost of each calendar month." action={<button onClick={exportReport} disabled={!query.data?.perItem.length}><Download size={15} /> Export report</button>} />
-    <Card className="toolbar-card report-filters"><label>From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><p>Damage valuation and used valuation use the monthly average purchase cost within each calendar month.</p></Card>
-    <Card className="table-card"><table><thead><tr><th>Item</th><th>Purchase qty</th><th>Purchase cost</th><th>Used qty</th><th>Used value</th><th>Damage qty</th><th>Damage value</th><th>Produce</th><th>Sell</th><th>Sales value</th></tr></thead><tbody>{(query.data?.perItem ?? []).map(row => <tr key={row.item.id}><td><strong>{row.item.name}</strong><small>{row.item.itemType}</small></td><td>{unitLabel(row.item, row.purchaseQtyGrams)}</td><td>{money(row.purchaseCost)}</td><td>{unitLabel(row.item, row.usedQtyGrams)}</td><td>{money(row.usedValue)}</td><td>{unitLabel(row.item, row.damageQtyGrams)}</td><td>{money(row.damageValue)}</td><td>{unitLabel(row.item, row.produceQtyGrams)}</td><td>{unitLabel(row.item, row.sellQtyGrams)}</td><td>{money(row.salesValue)}</td></tr>)}{!query.data?.perItem.length && <tr><td colSpan={10}><EmptyState>No report data in this period.</EmptyState></td></tr>}</tbody></table></Card>
+    <Card className="toolbar-card report-filters"><label>From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><label>Item<select value={selectedItemId} onChange={event => setSelectedItemId(event.target.value)}><option value="">All items</option>{rows.map(row => <option key={row.item.id} value={row.item.id}>{row.item.name}</option>)}</select></label>{selected && <button type="button" onClick={() => setSelectedItemId("")}>Clear item</button>}</Card>
+    <Card className="table-card"><table><thead><tr><th>Item</th><th>Purchase qty</th><th>Purchase cost</th><th>Used qty</th><th>Used value</th><th>Damage qty</th><th>Damage value</th><th>Produce</th><th>Sell</th><th>Sales value</th></tr></thead><tbody>{visibleRows.map(row => <tr key={row.item.id}><td><strong>{row.item.name}</strong><small>{row.item.itemType}</small></td><td>{unitLabel(row.item, row.purchaseQtyGrams)}</td><td>{money(row.purchaseCost)}</td><td>{unitLabel(row.item, row.usedQtyGrams)}</td><td>{money(row.usedValue)}</td><td>{unitLabel(row.item, row.damageQtyGrams)}</td><td>{money(row.damageValue)}</td><td>{unitLabel(row.item, row.produceQtyGrams)}</td><td>{unitLabel(row.item, row.sellQtyGrams)}</td><td>{money(row.salesValue)}</td></tr>)}{!visibleRows.length && <tr><td colSpan={10}><EmptyState>No report data in this period.</EmptyState></td></tr>}</tbody></table></Card>
   </>;
 }
 
@@ -386,25 +426,51 @@ function SpreadsheetPanel({ date, defaultKind = "purchases", shopIdOverride }: {
     const rows = kind === "purchases" ? (purchaseQuery.data ?? []).map(row => ({ Date: String(row.purchaseDate).slice(0, 10), "Item ID": row.itemId, Name: row.item.name, Qty: row.inputQuantity, Unit: row.inputUnit, "Base Qty": row.baseQuantity, "Base Unit": row.baseUnit, "Unit Price": row.unitCostPerGram, "Total Price": row.totalCost, Status: row.status, Note: row.note || "" })) : kind === "production" ? (production.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : kind === "packaging" ? (packaging.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : (sales.data ?? []).map(row => ({ Date: date, "Shop ID": shopId, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, Produce: row.produceQtyGrams, Sell: row.sellQtyGrams, Closing: row.closingQtyGrams, "Unit Price": row.sellingPricePerUnit, "Total Price": row.totalPrice, Note: row.note || "" }));
     downloadCsv(`bakery-${kind}-${date}`, rows);
   };
-  const importFile = async (file: File) => {
-    setMessage("Reading spreadsheet…");
+  const importFiles = async (files: File[]) => {
+    setMessage("Reading spreadsheet(s)…");
     try {
-      const isCsv = file.name.toLowerCase().endsWith(".csv");
-      const source = isCsv ? stripUtf8Bom(await file.text()) : await file.arrayBuffer();
-      const workbook = XLSX.read(source, { type: isCsv ? "string" : "array" }); const firstSheet = workbook.Sheets[workbook.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false });
-      if (!rows.length) throw new Error("The spreadsheet contains no data rows.");
+      if (!files.length) return;
+      const itemById = new Map((itemQuery.data ?? []).map(item => [item.id, item]));
+      const itemByName = new Map((itemQuery.data ?? []).map(item => [item.name.trim().toLocaleLowerCase(), item]));
+      const importedDates = new Set<string>();
       let completed = 0;
-      for (const row of rows) {
-        const rowDate = normalizeSpreadsheetBusinessDate(row.Date) || ""; const id = Number(row["Item ID"]); if (!/^\d{4}-\d{2}-\d{2}$/.test(rowDate) || !Number.isInteger(id) || id <= 0) throw new Error("Every row needs a valid Date and numeric Item ID.");
-        if (kind === "purchases") await createPurchase.mutateAsync({ purchaseDate: rowDate, itemId: id, inputQuantity: Number(row.Qty), inputUnit: String(row.Unit) as "g" | "kg" | "viss" | "pcs", totalCost: Number(row["Total Price"] ?? row["Total Cost"]), status: String(row.Status || "confirmed") === "draft" ? "draft" : "confirmed", note: String(row.Note || "") || null });
-        if (kind === "production" || kind === "packaging") await saveOperation.mutateAsync({ date: rowDate, itemId: id, type: kind, issuedQtyGrams: Number(row["Issued g"] || 0), returnQtyGrams: Number(row["Return g"] || 0), damageQtyGrams: Number(row["Damage g"] || 0), note: String(row.Note || "") || null });
-        if (kind === "sales") await saveSale.mutateAsync({ date: rowDate, shopId: Number(row["Shop ID"]), itemId: id, produceQtyGrams: Number(row["Produce Qty"] ?? row["Produce g"] ?? 0), sellQtyGrams: Number(row["Sell Qty"] ?? row["Sell g"] ?? 0), note: String(row.Note || "") || null });
-        completed++;
+      for (const file of files) {
+        const isCsv = file.name.toLowerCase().endsWith(".csv");
+        const source = isCsv ? stripUtf8Bom(await file.text()) : await file.arrayBuffer();
+        const workbook = XLSX.read(source, { type: isCsv ? "string" : "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false });
+        if (!rows.length) throw new Error(`${file.name}: the spreadsheet contains no data rows.`);
+        const fileDates = new Set<string>();
+        for (const row of rows) {
+          const rowDate = resolveProductionImportDate(file.name, row.Date, date);
+          fileDates.add(rowDate);
+          const rawId = firstSpreadsheetValue(row, "Item ID", "ItemID");
+          const rawName = String(firstSpreadsheetValue(row, "Item Name", "Name")).trim();
+          const id = rawId !== "" ? Number(rawId) : itemByName.get(rawName.toLocaleLowerCase())?.id ?? 0;
+          const item = itemById.get(id) ?? itemByName.get(rawName.toLocaleLowerCase());
+          if (!Number.isInteger(id) || id <= 0 || !item) throw new Error(`${file.name}: item ${rawName || rawId || "(unknown)"} was not found for the selected date.`);
+          if (kind === "purchases") await createPurchase.mutateAsync({ purchaseDate: rowDate, itemId: id, inputQuantity: Number(row.Qty), inputUnit: String(row.Unit) as "g" | "kg" | "viss" | "pcs", totalCost: Number(row["Total Price"] ?? row["Total Cost"]), status: String(row.Status || "confirmed") === "draft" ? "draft" : "confirmed", note: String(row.Note || "") || null });
+          if (kind === "production" || kind === "packaging") {
+            const issued = Number(firstSpreadsheetValue(row, "Issued g", "Issued"));
+            const returned = Number(firstSpreadsheetValue(row, "Return g", "Return"));
+            const damage = Number(firstSpreadsheetValue(row, "Damage g", "Damage"));
+            const importedIn = firstSpreadsheetValue(row, "In g", "In");
+            if (![issued, returned, damage].every(value => Number.isFinite(value) && value >= 0)) throw new Error(`${file.name}: Issued, Return, and Damage must be non-negative numbers.`);
+            const inOverride = importedIn === "" ? undefined : Number(importedIn);
+            if (inOverride !== undefined && (!Number.isFinite(inOverride) || inOverride < 0)) throw new Error(`${file.name}: In must be a non-negative number.`);
+            await saveOperation.mutateAsync({ date: rowDate, itemId: id, type: kind, issuedQtyGrams: issued, returnQtyGrams: returned, damageQtyGrams: damage, inOverrideQtyGrams: inOverride, note: String(row.Note || "") || null });
+          }
+          if (kind === "sales") await saveSale.mutateAsync({ date: rowDate, shopId: Number(row["Shop ID"]), itemId: id, produceQtyGrams: Number(row["Produce Qty"] ?? row["Produce g"] ?? 0), sellQtyGrams: Number(row["Sell Qty"] ?? row["Sell g"] ?? 0), note: String(row.Note || "") || null });
+          completed++;
+        }
+        fileDates.forEach(importedDate => importedDates.add(importedDate));
       }
-      await utils.inventory.invalidate(); setMessage(`Imported ${completed} ${kind} record(s).`);
+      await utils.inventory.invalidate();
+      setMessage(`Imported ${completed} ${kind} record(s) for ${Array.from(importedDates).sort().join(", ")}. Opening, Used, and Closing remain system-calculated.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Import failed. Check the template and row values."); }
   };
-  return <Card className="more-panel"><div className="panel-heading"><FileSpreadsheet size={19} /><div><h2>Import / export</h2><p>Download UTF-8 XLSX or CSV templates, then import validated Purchase, Production, Packaging, or Sales records.</p></div></div><div className="exchange-actions"><label>Table<select value={kind} onChange={event => setKind(event.target.value as ExchangeKind)}><option value="purchases">Purchase</option><option value="production">Production</option><option value="packaging">Packaging</option><option value="sales">Sales</option></select></label><button onClick={downloadTemplate}><Download size={15} />XLSX template</button><button onClick={downloadCsvTemplate}><Download size={15} />CSV template</button><button onClick={exportTable}><Download size={15} />Export XLSX</button><button onClick={exportCsv}><Download size={15} />Export CSV</button><label className="file-button"><UploadIcon />Import XLSX / CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0])} /></label></div>{message && <p className="exchange-message">{message}</p>}</Card>;
+  return <Card className="more-panel"><div className="panel-heading"><FileSpreadsheet size={19} /><div><h2>Import / export</h2></div></div><div className="exchange-actions"><label>Table<select value={kind} onChange={event => setKind(event.target.value as ExchangeKind)}><option value="purchases">Purchase</option><option value="production">Production</option><option value="packaging">Packaging</option><option value="sales">Sales</option></select></label><button onClick={downloadTemplate}><Download size={15} />XLSX template</button><button onClick={downloadCsvTemplate}><Download size={15} />CSV template</button><button onClick={exportTable}><Download size={15} />Export XLSX</button><button onClick={exportCsv}><Download size={15} />Export CSV</button><label className="file-button"><UploadIcon />Import XLSX / CSV<input type="file" multiple accept=".xlsx,.xls,.csv" onChange={event => event.target.files?.length && importFiles(Array.from(event.target.files))} /></label></div>{message && <p className="exchange-message">{message}</p>}</Card>;
 }
 
 function UploadIcon() { return <span aria-hidden="true">↑</span>; }
@@ -449,7 +515,7 @@ function MorePage({ date, from, to, goTo, setDate, isAdmin }: { date: string; fr
     { key: "admin", label: "Admin panel", icon: Settings2 },
     { key: "backup", label: "Backup", icon: ArchiveRestore },
   ];
-  return <><PageHeader title="More" subtitle="Choose a feature to open its workspace." /><div className="more-menu-grid"><button onClick={() => goTo("items")}><Boxes size={19} /><strong>Item Dashboard</strong><span>Manage item lifecycle and ordering</span></button>{buttons.map(({ key, label, icon: Icon }) => <button key={key} className={section === key ? "active" : ""} onClick={() => setSection(key)}><Icon size={19} /><strong>{label}</strong><span>Open {label.toLowerCase()}</span></button>)}</div><div className="more-stack">{section === "orders" && <OrderTable date={date} />}{section === "shops" && <ShopPanel />}{section === "recipes" && <RecipeManager />}{section === "exchange" && <SpreadsheetPanel date={date} />}{section === "admin" && <AdminPanel />}{section === "backup" && <BackupPanel />}{section === "search" && <GlobalSearchPanel goTo={(page, matchedDate) => { if (matchedDate) setDate(matchedDate); goTo(page, matchedDate); }} openMore={sectionName => setSection(sectionName)} />}{section === "audit" && isAdmin && <AuditLogPanel from={from} to={to} />}</div></>;
+  return <><PageHeader title="More" /><div className="more-menu-grid"><button onClick={() => goTo("items")}><Boxes size={19} /><strong>Item Dashboard</strong></button>{buttons.map(({ key, label, icon: Icon }) => <button key={key} className={section === key ? "active" : ""} onClick={() => setSection(key)}><Icon size={19} /><strong>{label}</strong></button>)}</div><div className="more-stack">{section === "orders" && <OrderTable date={date} />}{section === "shops" && <ShopPanel />}{section === "recipes" && <RecipeManager />}{section === "exchange" && <SpreadsheetPanel date={date} />}{section === "admin" && <AdminPanel />}{section === "backup" && <BackupPanel />}{section === "search" && <GlobalSearchPanel goTo={(page, matchedDate) => { if (matchedDate) setDate(matchedDate); goTo(page, matchedDate); }} openMore={sectionName => setSection(sectionName)} />}{section === "audit" && isAdmin && <AuditLogPanel from={from} to={to} />}</div></>;
 }
 
 const navigation: Array<{ page: Page; label: string; icon: typeof Package }> = [
@@ -463,7 +529,7 @@ function ERPWorkspace() {
   const [from, setFrom] = useState(monthFirst());
   const [to, setTo] = useState(today());
   const heading = navigation.find(item => item.page === page)?.label ?? "Bakery ERP";
-  const content = page === "dashboard" ? <DashboardPage date={date} /> : page === "items" ? <ItemsPage date={date} isAdmin={user?.role === "admin"} /> : page === "purchases" ? <PurchasesPage date={date} /> : page === "production" ? <OperationsPage date={date} type="production" /> : page === "packaging" ? <OperationsPage date={date} type="packaging" /> : page === "sales" ? <SalesPage date={date} /> : page === "reports" ? <DetailedReports from={from} to={to} setFrom={setFrom} setTo={setTo} /> : <MorePage date={date} from={from} to={to} goTo={setPage} setDate={setDate} isAdmin={user?.role === "admin"} />;
+  const content = page === "dashboard" ? <DashboardPage date={date} /> : page === "items" ? <ItemsPage date={date} isAdmin={user?.role === "admin"} /> : page === "purchases" ? <PurchasesPage date={date} /> : page === "production" ? <OperationsPage key={`production-${date}`} date={date} type="production" /> : page === "packaging" ? <OperationsPage key={`packaging-${date}`} date={date} type="packaging" /> : page === "sales" ? <SalesPage key={`sales-${date}`} date={date} /> : page === "reports" ? <DetailedReports from={from} to={to} setFrom={setFrom} setTo={setTo} /> : <MorePage date={date} from={from} to={to} goTo={setPage} setDate={setDate} isAdmin={user?.role === "admin"} />;
   return <div className="erp-shell"><header className="erp-topbar"><div><span className="brand-mark">B</span><div className="brand-copy"><strong>Bakery ERP</strong><small>{heading} · operational control</small></div></div><div className="top-actions"><DateControl value={date} onChange={setDate} /><button className="user-button" onClick={logout} title="Sign out"><span>{user?.name?.slice(0, 1).toUpperCase() || "U"}</span><LogOut size={15} /></button></div></header><main className="erp-main"><nav className="page-tabs" aria-label="Main navigation">{navigation.map(item => { const Icon = item.icon; return <button key={item.page} className={page === item.page ? "active" : ""} onClick={() => setPage(item.page)}><Icon size={15} />{item.label}</button>; })}</nav><div className="page-content">{content}</div></main></div>;
 }
 

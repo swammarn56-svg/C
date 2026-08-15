@@ -335,9 +335,21 @@ export const inventoryRouter = router({
       }),
     confirm: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
         await db.update(purchases).set({ status: "confirmed", confirmedAt: new Date() }).where(eq(purchases.id, input.id));
+        await recordAudit(ctx, "purchase_confirm", "purchases", input.id, null, { status: "confirmed" });
+        return { success: true };
+      }),
+    cancel: protectedProcedure
+      .input(z.object({ id: z.number().int().positive(), reason: z.string().trim().max(500).optional().nullable() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await requireDb();
+        const existing = await db.select({ id: purchases.id, status: purchases.status }).from(purchases).where(eq(purchases.id, input.id)).limit(1);
+        if (!existing[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Purchase not found." });
+        if (existing[0].status !== "confirmed") throw new TRPCError({ code: "BAD_REQUEST", message: "Only confirmed purchases can be cancelled." });
+        await db.update(purchases).set({ status: "cancelled", updatedAt: new Date() }).where(eq(purchases.id, input.id));
+        await recordAudit(ctx, "purchase_cancel", "purchases", input.id, null, { status: "cancelled", reason: input.reason?.trim() || null });
         return { success: true };
       }),
   }),
@@ -366,7 +378,6 @@ export const inventoryRouter = router({
         const db = await requireDb();
         await assertDayOpen(input.date, input.type);
         if (input.inOverrideQtyGrams !== undefined && ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Only administrators can manually override In." });
-        if (input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined && !input.openingReason?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Opening edit reason is required." });
         const item = await db.select().from(items).where(eq(items.id, input.itemId)).limit(1);
         if (!item[0] || item[0].itemType !== input.type) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "The item does not belong to this ledger." });
@@ -544,7 +555,6 @@ export const inventoryRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
         await assertDayOpen(input.date, "sales");
-        if (input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined && !input.openingReason?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Opening edit reason is required." });
         const item = await db.select().from(items).where(eq(items.id, input.itemId)).limit(1);
         if (!item[0] || item[0].itemType !== "sales") throw new TRPCError({ code: "BAD_REQUEST", message: "The item does not belong to Sales." });
         ensureEffective(item[0], input.date);

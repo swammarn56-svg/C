@@ -98,6 +98,25 @@ describe.skipIf(!process.env.SUPABASE_DB_URL)("inventory operation save integrat
     expect(resetNextDay.openingQtyGrams).toBe(500);
   }, 20000);
 
+  it("accepts an Opening override without a reason and carries the balance forward", async () => {
+    const db = await requireDb();
+    const [user] = await db.insert(users).values({ openId: `vitest-opening-${Date.now()}`, name: "Opening Save Test", email: "opening-save-test@example.invalid", role: "admin" }).returning();
+    testUserId = user.id;
+    const [item] = await db.insert(items).values({ name: `Opening Item ${Date.now()}`, itemType: "production", displayUnit: "g", gramsPerDisplayUnit: "1", minStockGrams: "0", effectiveFrom: new Date("2099-01-01T00:00:00.000Z"), sortOrder: 999995, createdBy: user.id }).returning();
+    testItemId = item.id;
+    const caller = appRouter.createCaller({ req: {} as never, res: {} as never, user });
+    await caller.inventory.operations.save({ date: "2099-01-01", itemId: item.id, type: "production", openingOverrideQtyGrams: 125, issuedQtyGrams: 25, returnQtyGrams: 0, damageQtyGrams: 0 });
+    await caller.inventory.operations.save({ date: "2099-01-02", itemId: item.id, type: "production", issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const day1 = (await caller.inventory.operations.daily({ date: "2099-01-01", type: "production" })).find(row => row.item.id === item.id)!;
+    const day2 = (await caller.inventory.operations.daily({ date: "2099-01-02", type: "production" })).find(row => row.item.id === item.id)!;
+    expect(day1.openingReason).toBe("");
+    expect(day1.closingQtyGrams).toBe(100);
+    expect(day2.openingQtyGrams).toBe(100);
+    await caller.inventory.operations.save({ date: "2099-01-01", itemId: item.id, type: "production", openingOverrideQtyGrams: 125, openingReason: "Stock count", issuedQtyGrams: 25, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const reasonSaved = (await caller.inventory.operations.daily({ date: "2099-01-01", type: "production" })).find(row => row.item.id === item.id)!;
+    expect(reasonSaved.openingReason).toBe("Stock count");
+  }, 20000);
+
   it("saves a Sale-item order, generates effective-date Issued quantities, and preserves manual Issued edits", async () => {
     const db = await requireDb();
     const [user] = await db.insert(users).values({ openId: `vitest-order-${Date.now()}`, name: "Order Save Test", email: "order-save-test@example.invalid", role: "admin" }).returning();

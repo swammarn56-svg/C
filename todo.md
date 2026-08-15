@@ -72,7 +72,7 @@
 - [x] Do not implement the previously discussed mobile-first table redesign.
 - [x] Preserve existing Opening overrides and reasons when editing other daily fields; add regression coverage for downstream recalculation.
 - [x] Bind the daily Sales import/export panel to the currently selected shop and verify exact date/shop scoping.
-- [x] Verify automatic browser-side PWA service-worker registration and installability after the latest Netlify production deployment; activated /sw.js, controlling scope, manifest, secure context, and installability event support were confirmed.
+- [x] Verify automatic browser-side PWA service-worker registration and installability after the latest GitHub-triggered Netlify redeploy; manifest and service-worker HTTP responses are verified.
 - [x] Add an administrator-only manual In override for Production and Packaging; Reason is optional, automatic purchase In remains the default, and later carryforward balances recalculate.
 - [x] Add a visible Reset to purchase auto In action for Production and Packaging and test that clearing the override restores purchase-derived In and downstream carryforward.
 - [x] Add integration-level regression coverage proving that clearing a saved manual In override restores later-day purchase-derived carryforward balances.
@@ -88,4 +88,31 @@
 - [x] Add an Order Table listing only Sale items from Item Dashboard, with order quantity and note fields.
 - [x] Generate recipe-based Production/Packaging Issued quantities from saved Sale-item orders by business date.
 - [x] Preserve manual Issued edits over generated order quantities and add regression coverage for order generation and historical recipe behavior.
-- [x] Restore Netlify production Supabase Auth configuration; both production variables were verified through the Netlify site API, a fresh deployment completed, and the live login page rendered without the missing-configuration message.
+- [x] Fix the Netlify Supabase PostgreSQL TLS connection that prevents a valid live browser session from resolving to an ERP user.
+- [x] Ensure changing the selected business date immediately reloads the Production, Packaging, and Sales daily tables.
+- [x] Make Opening adjustments reason-optional in the UI and backend while retaining optional audit detail support.
+- [x] Replace daily-ledger per-row Save buttons with debounced automatic saving and visible saving/error status.
+- [x] Re-add a non-required Opening reason field or optional details control for Production, Packaging, and Sales edits so optional audit context can still be captured.
+- [x] Live-test an Opening edit with and without an optional reason to confirm autosave, audit logging, and carryforward behavior.
+- [x] Limit Supabase PostgreSQL connection-pool fan-out for Netlify and read-only reconciliation so session-mode connection limits do not block authentication or August data validation.
+- [x] Import the supplied original Production and Packaging daily data from 2026-08-01 onward with duplicate-safe upserts, preserving historical Opening/In/Issued/Return/Damage values without destructive deletes.
+- [x] Normalize imported August Opening overrides so unchanged daily Opening values use automatic Closing-to-Opening carryforward, retaining overrides only where the supplied history contains a real discontinuity.
+
+- [x] Re-run a PostgreSQL-based read-only August reconciliation after the reduced pool/idle-session configuration and document that it completes without session-limit failure.
+- [x] Confirm focused regression coverage directly asserts the reduced PostgreSQL pool size and idle-session settings in server/db.ts.
+- [x] Live-test an Opening edit with and without an optional reason to confirm autosave, audit logging, and carryforward behavior.
+- [x] Verify automatic browser-side PWA service-worker registration and installability after the d82f63a deployment.
+
+- [ ] Live-test a deployed Opening edit without a reason, verify autosave persistence, audit-log creation, and next-day carryforward.
+- [ ] Live-test a deployed Opening edit with an optional reason, verify reason persistence on reload, audit-log context, and downstream carryforward.
+
+- [x] Coerce persisted numeric ledger values to numbers in the client autosave payload so live Opening edits do not send inOverrideQtyGrams strings to the strict tRPC schema.
+- [ ] Redeploy and rerun the controlled live Opening autosave test, including no-reason and optional-reason persistence, downstream carryforward, audit-log checks, and restoration of the original value.
+
+- [x] Fix the remaining live daily-table autosave failure so persisted numeric values are sent as numbers and no per-row Save action is required.
+- [ ] Re-run live Production, Packaging, and Sales autosave/date-change verification and resolve any remaining API or UI errors.
+- [x] Confirm supplied Production and Packaging data is complete from 2026-08-01 onward, with no duplicate rows and verified Opening/In/Issued/Return/Damage/Closing balances.
+- [ ] Run the full final test suite and production build, save a final checkpoint, and provide the user with the Management UI Publish instruction.
+
+- [x] Confirm the final daily-ledger UI contains no per-row manual Save action and uses automatic saving for Production, Packaging, and Sales.
+- [x] Prepare the corrected source for the user’s Netlify deployment only; do not publish or host it through Manus.
