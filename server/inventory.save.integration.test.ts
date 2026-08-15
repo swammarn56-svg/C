@@ -42,7 +42,7 @@ describe.skipIf(!process.env.SUPABASE_DB_URL)("inventory operation save integrat
     testPackagingItemId = null;
   });
 
-  it("clears a persisted manual In override and restores downstream purchase carryforward", async () => {
+  it("uses confirmed Purchase as the only In source and recalculates carryforward when cancelled", async () => {
     const db = await requireDb();
     const [user] = await db.insert(users).values({
       openId: `vitest-in-save-${Date.now()}`,
@@ -64,7 +64,7 @@ describe.skipIf(!process.env.SUPABASE_DB_URL)("inventory operation save integrat
     }).returning();
     testItemId = item.id;
 
-    await db.insert(purchases).values({
+    const [purchase] = await db.insert(purchases).values({
       purchaseDate: new Date("2099-01-01T00:00:00.000Z"),
       itemId: item.id,
       inputQuantity: "500",
@@ -75,27 +75,30 @@ describe.skipIf(!process.env.SUPABASE_DB_URL)("inventory operation save integrat
       status: "confirmed",
       confirmedAt: new Date(),
       createdBy: user.id,
-    });
+    }).returning({ id: purchases.id });
 
     const caller = appRouter.createCaller({ req: {} as never, res: {} as never, user });
     const base = { itemId: item.id, type: "production" as const, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0 };
 
     await caller.inventory.operations.save({ ...base, date: "2099-01-01", inOverrideQtyGrams: 800 });
     await caller.inventory.operations.save({ ...base, date: "2099-01-02" });
-    const overriddenNextDayRows = await caller.inventory.operations.daily({ date: "2099-01-02", type: "production" });
-    const overriddenNextDay = overriddenNextDayRows.find(row => row.item.id === item.id)!;
-    expect(overriddenNextDay.inQtyGrams).toBe(0);
-    expect(overriddenNextDay.openingQtyGrams).toBe(800);
+    const purchaseTodayRows = await caller.inventory.operations.daily({ date: "2099-01-01", type: "production" });
+    const purchaseNextDayRows = await caller.inventory.operations.daily({ date: "2099-01-02", type: "production" });
+    const purchaseToday = purchaseTodayRows.find(row => row.item.id === item.id)!;
+    const purchaseNextDay = purchaseNextDayRows.find(row => row.item.id === item.id)!;
+    expect(purchaseToday.inOverrideQtyGrams).toBeNull();
+    expect(purchaseToday.inQtyGrams).toBe(500);
+    expect(purchaseToday.closingQtyGrams).toBe(500);
+    expect(purchaseNextDay.openingQtyGrams).toBe(500);
 
-    await caller.inventory.operations.save({ ...base, date: "2099-01-01", inOverrideQtyGrams: null });
-    const resetTodayRows = await caller.inventory.operations.daily({ date: "2099-01-01", type: "production" });
-    const resetNextDayRows = await caller.inventory.operations.daily({ date: "2099-01-02", type: "production" });
-    const resetToday = resetTodayRows.find(row => row.item.id === item.id)!;
-    const resetNextDay = resetNextDayRows.find(row => row.item.id === item.id)!;
-    expect(resetToday.inOverrideQtyGrams).toBeNull();
-    expect(resetToday.inQtyGrams).toBe(500);
-    expect(resetToday.closingQtyGrams).toBe(500);
-    expect(resetNextDay.openingQtyGrams).toBe(500);
+    await caller.inventory.purchases.cancel({ id: purchase.id, reason: "Regression test cancellation" });
+    const cancelledTodayRows = await caller.inventory.operations.daily({ date: "2099-01-01", type: "production" });
+    const cancelledNextDayRows = await caller.inventory.operations.daily({ date: "2099-01-02", type: "production" });
+    const cancelledToday = cancelledTodayRows.find(row => row.item.id === item.id)!;
+    const cancelledNextDay = cancelledNextDayRows.find(row => row.item.id === item.id)!;
+    expect(cancelledToday.inQtyGrams).toBe(0);
+    expect(cancelledToday.closingQtyGrams).toBe(0);
+    expect(cancelledNextDay.openingQtyGrams).toBe(0);
   }, 20000);
 
   it("accepts an Opening override without a reason and carries the balance forward", async () => {

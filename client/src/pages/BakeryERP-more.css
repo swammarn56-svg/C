@@ -56,3 +56,15 @@ code { display: inline-block; max-width: 300px; overflow-wrap: anywhere; color: 
 .negative-stock-row { background: #fff7ed; }
 .negative-stock-row td { border-top-color: #fed7aa; border-bottom-color: #fed7aa; }
 .row-warning { display: inline-block; margin-left: 6px; padding: 2px 5px; border-radius: 999px; background: #ffedd5; color: #9a3412; font-size: 10px; font-weight: 800; }
+
+/* Preserve the existing ledger layout while keeping only the Name column visible during horizontal scrolling. */
+.table-card table th:first-child,
+.table-card table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #ffffff;
+  box-shadow: 1px 0 0 #e5e7eb;
+}
+.table-card table th:first-child { z-index: 3; }
+.negative-stock-row td:first-child { background: #fff7ed; }
