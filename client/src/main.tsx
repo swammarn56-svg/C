@@ -7,10 +7,14 @@ import superjson from "superjson";
 import App from "./App";
 import "./index.css";
 
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(registration => registration.update()).catch(error => {
-    console.warn("Bakery ERP service worker registration failed", error);
-  });
+if ("serviceWorker" in navigator && (window.location.protocol === "https:" || window.location.hostname === "localhost")) {
+  const registerServiceWorker = () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(registration => registration.update()).catch(error => {
+      console.warn("Bakery ERP service worker registration failed", error);
+    });
+  };
+  if (document.readyState === "complete") registerServiceWorker();
+  else window.addEventListener("load", registerServiceWorker, { once: true });
 }
 
 const queryClient = new QueryClient();
