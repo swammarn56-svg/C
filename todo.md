@@ -55,3 +55,4 @@
 - [x] Create a fresh GitHub-ready ZIP from the final Supabase-connected source tree and record its output path and exclusion rules.
 - [x] Repackage the Bakery ERP source as a flat-root GitHub ZIP with unnecessary preview artifacts removed and direct upload instructions.
 - [x] Create a single-project-folder ZIP so the user downloads one archive, extracts one folder, and uploads that folder’s contents to GitHub without selecting multiple project folders individually.
+- [x] Upload the finalized Bakery ERP source to the user-selected GitHub repository `swammarn56-svg/C` and verify the pushed main branch.
