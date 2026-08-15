@@ -1,0 +1,28 @@
+# Project TODO
+
+- [x] Inspect the supplied Bakery ERP archive and map reusable UI, routes, and data workflows into the active project.
+- [x] Define the inventory data model, effective-dated item lifecycle, role model, stock calculations, and monthly average-cost rules.
+- [x] Create the Item Dashboard with separate Packaging, Production, and Sales tabs.
+- [x] Implement effective-start item visibility, effective-date soft deletion, rename, minimum stock, category assignment, and synchronized item ordering.
+- [x] Restrict cost-per-unit visibility to the Sales item tab and sales-related authorised screens only.
+- [x] Implement Purchase Packaging entries in pieces with quantity, note, and cost data.
+- [x] Implement Purchase Production entries with g, kg, and viss input units and canonical gram storage.
+- [x] Automatically feed purchase quantities into the corresponding daily Production and Packaging In values.
+- [x] Implement the Production daily ledger with Opening, In, Issued, Return, Damage, Used, Closing, and Note fields and validated formulas.
+- [x] Implement the Packaging daily ledger with the same balances, formulas, and synchronized item order.
+- [x] Implement shop management including store-specific per-item prices.
+- [x] Implement the Sales daily ledger with manual Produce and Sell, automatic Opening and Closing, shop selection, and notes.
+- [x] Implement daily dashboard metrics for purchases, closing stock, damage, sales margin, and low-stock alerts.
+- [x] Calculate purchase valuation by calendar-month average cost only.
+- [x] Implement date-range reports for purchases, per-item production, packaging, sales, and damage valuation.
+- [x] Implement user role management, recipe storage, and database backup export.
+- [x] Implement spreadsheet exports, import validation, and downloadable format templates for Purchase, Production, Packaging, and Sales.
+- [x] Add automated tests for date-effective item behavior, unit conversion, ledger formulas, and monthly average cost.
+- [x] Verify the application UI, calculations, build, and critical workflows before delivery.
+- [x] Add category assignment to the item data model and Item Dashboard.
+- [x] Restrict Sales cost-per-unit responses and controls to authorised administrators.
+- [x] Present separate date-range purchase, production, packaging, sales, and damage report workflows.
+- [x] Expand recipe storage to support multi-line component editing and deletion.
+- [x] Document and complete end-to-end QA for cross-module flows and spreadsheet exchange.
+- [x] Restrict Item Dashboard add, edit, delete, reorder, and Sales cost inputs to administrators in the frontend.
+- [x] Execute and record live acceptance checks for critical operational flows without seeding business data.

@@ -1,5 +1,27 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1786767289297,
+      "tag": "0000_dry_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1786767496053,
+      "tag": "0001_oval_multiple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786768227633,
+      "tag": "0002_skinny_smiling_tiger",
+      "breakpoints": true
+    }
+  ]
 }

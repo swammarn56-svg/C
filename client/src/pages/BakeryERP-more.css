@@ -1,0 +1,36 @@
+.more-stack { display: grid; gap: 12px; }
+.more-panel { padding: 17px; }
+.panel-heading { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
+.panel-heading h2, .panel-heading p { margin: 0; }
+.panel-heading h2 { font-size: 16px; }
+.panel-heading p { margin-top: 4px; color: #64748b; font-size: 12px; }
+.inline-form { display: flex; gap: 8px; margin-bottom: 12px; }
+.inline-form input { max-width: 350px; }
+.config-list { display: grid; margin-top: 12px; border-top: 1px solid #e5e7eb; }
+.config-list > div, .price-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+.config-list > div select { width: 160px; padding: 6px 8px; font-size: 12px; }
+.status-good { color: #047857; font-size: 11px; font-weight: 700; }
+.status-muted { color: #64748b; font-size: 11px; }
+.config-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; gap: 8px; padding-top: 14px; border-top: 1px solid #e5e7eb; }
+.config-form > button { white-space: nowrap; }
+.price-list { display: grid; margin-top: 13px; }
+.price-list span { color: #64748b; }
+.recipe-form { grid-template-columns: 1.2fr repeat(3, minmax(0, 1fr)) auto; }
+.two-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.exchange-actions { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
+.exchange-actions label { min-width: 190px; }
+.exchange-actions .file-button { display: inline-flex; align-items: center; gap: 7px; min-width: auto; padding: 8px 11px; border: 1px solid #d1d5db; border-radius: 10px; background: #fff; color: #111827; }
+.file-button input { display: none; }
+.exchange-message { margin: 12px 0 0; color: #475569; font-size: 12px; }
+.report-total { display: grid; gap: 5px; width: min(360px, 100%); padding: 15px; margin-bottom: 12px; border-left: 4px solid #111827; }
+.report-total strong { font-size: 22px; }.report-total span { color: #64748b; font-size: 12px; }
+.read-only-label { color: #64748b; font-size: 12px; font-weight: 700; }
+.recipe-editor { display: grid; gap: 12px; }.recipe-top { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.recipe-lines { display: grid; gap: 7px; padding-top: 12px; border-top: 1px solid #e5e7eb; }.recipe-line-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }.recipe-line { display: grid; grid-template-columns: 1fr 180px auto; gap: 8px; }.recipe-actions { display: flex; justify-content: flex-end; gap: 8px; }.recipe-meta { display: block; margin-top: 3px; color: #64748b; font-size: 11px; }.recipe-icon { font-size: 21px; line-height: 1; }
+@media (max-width: 860px) {
+  .form-grid, .config-form, .recipe-form, .two-panel { grid-template-columns: 1fr; }
+  .inline-form { flex-direction: column; }
+  .inline-form input { max-width: none; }
+  .exchange-actions { align-items: stretch; flex-direction: column; }
+  .exchange-actions label { min-width: 0; }
+  .recipe-top, .recipe-line { grid-template-columns: 1fr; }
+}
