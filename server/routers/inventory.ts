@@ -196,8 +196,8 @@ export const inventoryRouter = router({
           sortOrder: (last[0]?.sortOrder ?? -1) + 1,
           createdBy: ctx.user.id,
         };
-        const result = await db.insert(items).values(values);
-        return { id: Number(result[0].insertId) };
+        const result = await db.insert(items).values(values).returning({ id: items.id });
+        return { id: result[0]!.id };
       }),
     update: adminProcedure
       .input(
@@ -313,8 +313,8 @@ export const inventoryRouter = router({
           confirmedAt: input.status === "confirmed" ? new Date() : null,
           note: input.note || null,
           createdBy: ctx.user.id,
-        });
-        return { id: Number(result[0].insertId), quantityGrams };
+        }).returning({ id: purchases.id });
+        return { id: result[0]!.id, quantityGrams };
       }),
     confirm: protectedProcedure
       .input(z.object({ id: z.number().int().positive() }))
@@ -360,7 +360,8 @@ export const inventoryRouter = router({
             note: input.note || null,
             createdBy: ctx.user.id,
           })
-          .onDuplicateKeyUpdate({
+          .onConflictDoUpdate({
+            target: [operations.operationDate, operations.itemId, operations.operationType],
             set: {
               issuedQtyGrams: input.issuedQtyGrams.toString(),
               returnQtyGrams: input.returnQtyGrams.toString(),
@@ -386,8 +387,8 @@ export const inventoryRouter = router({
           await db.update(shops).set({ name: input.name, active: input.active }).where(eq(shops.id, input.id));
           return { id: input.id };
         }
-        const result = await db.insert(shops).values({ name: input.name, active: input.active, createdBy: ctx.user.id });
-        return { id: Number(result[0].insertId) };
+        const result = await db.insert(shops).values({ name: input.name, active: input.active, createdBy: ctx.user.id }).returning({ id: shops.id });
+        return { id: result[0]!.id };
       }),
     prices: protectedProcedure.query(async () => {
       const db = await requireDb();
@@ -409,7 +410,7 @@ export const inventoryRouter = router({
         await db
           .insert(shopItemPrices)
           .values({ ...input, sellingPricePerUnit: input.sellingPricePerUnit.toFixed(2) })
-          .onDuplicateKeyUpdate({ set: { sellingPricePerUnit: input.sellingPricePerUnit.toFixed(2), active: input.active } });
+          .onConflictDoUpdate({ target: [shopItemPrices.shopId, shopItemPrices.itemId], set: { sellingPricePerUnit: input.sellingPricePerUnit.toFixed(2), active: input.active } });
         return { success: true };
       }),
   }),
@@ -466,7 +467,7 @@ export const inventoryRouter = router({
         await db
           .insert(salesEntries)
           .values({ ...input, saleDate: dbDate(input.date), produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id })
-          .onDuplicateKeyUpdate({ set: { produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id } });
+          .onConflictDoUpdate({ target: [salesEntries.saleDate, salesEntries.shopId, salesEntries.itemId], set: { produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id } });
         return { success: true };
       }),
   }),
@@ -489,8 +490,8 @@ export const inventoryRouter = router({
           await db.update(recipes).set({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active }).where(eq(recipes.id, recipeId));
           await db.delete(recipeLines).where(eq(recipeLines.recipeId, recipeId));
         } else {
-          const result = await db.insert(recipes).values({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active, createdBy: ctx.user.id });
-          recipeId = Number(result[0].insertId);
+          const result = await db.insert(recipes).values({ name: input.name, outputItemId: input.outputItemId || null, outputQuantityGrams: input.outputQuantityGrams.toString(), note: input.note || null, active: input.active, createdBy: ctx.user.id }).returning({ id: recipes.id });
+          recipeId = result[0]!.id;
         }
         if (input.lines.length) await db.insert(recipeLines).values(input.lines.map(line => ({ recipeId: recipeId!, itemId: line.itemId, quantityGrams: line.quantityGrams.toString() })));
         return { id: recipeId };

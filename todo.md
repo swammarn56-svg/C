@@ -44,3 +44,12 @@
 - [x] Delete the spreadsheet-exchange temporary records and restore the original user role after the live check.
 - [x] Run a live XLSX Unicode import and export acceptance check with isolated temporary data, then remove it.
 - [x] Re-read and confirm the completed live CSV/XLSX evidence in the QA record.
+- [x] Inspect the current database access layer and define a safe Supabase replacement plan.
+- [x] Configure the supplied Supabase project URL and publishable key through managed environment variables.
+- [x] Obtain a server-side Supabase credential or database connection string required for schema migration and protected ERP writes.
+- [x] Create and apply the Supabase schema, row-level security, and indexes for Bakery ERP data.
+- [x] Replace the current database access layer with Supabase-backed queries and mutations.
+- [x] Validate Supabase connectivity, role access, operational calculations, and Unicode spreadsheet workflows.
+- [x] Package the Supabase-connected source code as an updated GitHub-ready ZIP.
+- [x] Re-run and record Supabase-backed QA for admin/user role restrictions plus a live Unicode import/export workflow against the migrated database.
+- [x] Create a fresh GitHub-ready ZIP from the final Supabase-connected source tree and record its output path and exclusion rules.
