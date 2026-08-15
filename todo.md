@@ -53,3 +53,4 @@
 - [x] Package the Supabase-connected source code as an updated GitHub-ready ZIP.
 - [x] Re-run and record Supabase-backed QA for admin/user role restrictions plus a live Unicode import/export workflow against the migrated database.
 - [x] Create a fresh GitHub-ready ZIP from the final Supabase-connected source tree and record its output path and exclusion rules.
+- [x] Repackage the Bakery ERP source as a flat-root GitHub ZIP with unnecessary preview artifacts removed and direct upload instructions.
