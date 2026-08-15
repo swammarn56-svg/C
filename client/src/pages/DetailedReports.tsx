@@ -31,6 +31,12 @@ export default function DetailedReports({ from, to, setFrom, setTo }: { from: st
       Category: row.item.category || "",
       "Purchase Qty g": row.purchaseQtyGrams,
       "Purchase Cost": row.purchaseCost,
+      Opening: row.openingQty,
+      In: row.inQty,
+      Issued: row.issuedQty,
+      Return: row.returnQty,
+      Closing: row.closingQty,
+      "Average Cost": row.averageCost,
       "Used Qty g": row.usedQtyGrams,
       "Used Value": row.usedValue,
       "Damage Qty g": row.damageQtyGrams,
@@ -38,6 +44,8 @@ export default function DetailedReports({ from, to, setFrom, setTo }: { from: st
       "Produce Qty g": row.produceQtyGrams,
       "Sell Qty g": row.sellQtyGrams,
       "Sales Value": row.salesValue,
+      "Closing Value": row.closingValue,
+      "Sales by Shop": (row.salesByShop ?? []).map((sale: any) => `${sale.shopName}: ${sale.salesValue}`).join(" | "),
     }));
     exportRows(`bakery-${view}-report-${from}-to-${to}`, exported);
   };
@@ -48,9 +56,9 @@ export default function DetailedReports({ from, to, setFrom, setTo }: { from: st
     <section className="toolbar-card report-filters"><label>From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><p>Damage and Used values use the same month’s average purchase cost.</p></section>
     <nav className="section-tabs" aria-label="Report types">{(["purchases", "production", "packaging", "sales", "damage"] as ReportView[]).map(value => <button key={value} className={value === view ? "active" : ""} onClick={() => setView(value)}>{title[value]}</button>)}</nav>
     {view === "purchases" && <section className="erp-card report-total"><strong>{money(purchases)}</strong><span>Total purchase value in selected period</span></section>}
-    <section className="erp-card table-card"><table><thead>{view === "purchases" ? <tr><th>Item</th><th>Category</th><th>Purchase qty</th><th>Purchase total</th></tr> : view === "production" || view === "packaging" ? <tr><th>Item</th><th>Category</th><th>Used qty</th><th>Used value</th><th>Damage qty</th><th>Damage value</th></tr> : view === "sales" ? <tr><th>Item</th><th>Category</th><th>Produce</th><th>Sell</th><th>Sales value</th></tr> : <tr><th>Item</th><th>Category</th><th>Damage qty</th><th>Damage value</th></tr>}</thead><tbody>
-      {filtered.map(row => view === "purchases" ? <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{row.item.category || "—"}</td><td>{qty(row.purchaseQtyGrams)} g</td><td>{money(row.purchaseCost)}</td></tr> : view === "production" || view === "packaging" ? <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{row.item.category || "—"}</td><td>{qty(row.usedQtyGrams)} g</td><td>{money(row.usedValue)}</td><td>{qty(row.damageQtyGrams)} g</td><td>{money(row.damageValue)}</td></tr> : view === "sales" ? <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{row.item.category || "—"}</td><td>{qty(row.produceQtyGrams)} g</td><td>{qty(row.sellQtyGrams)} g</td><td>{money(row.salesValue)}</td></tr> : <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{row.item.category || "—"}</td><td>{qty(row.damageQtyGrams)} g</td><td>{money(row.damageValue)}</td></tr>)}
-      {!filtered.length && <tr><td colSpan={6}><div className="empty-state">No {title[view].toLowerCase()} data in the selected period.</div></td></tr>}
+    <section className="erp-card table-card"><table><thead>{view === "purchases" ? <tr><th>Item</th><th>Category</th><th>Purchase qty</th><th>Purchase total</th></tr> : view === "production" || view === "packaging" ? <tr><th>Item</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Avg cost</th><th>Used value</th><th>Closing value</th></tr> : view === "sales" ? <tr><th>Item</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Sales value</th><th>Shop sales</th></tr> : <tr><th>Item</th><th>Damage qty</th><th>Average purchase cost</th><th>Damage total price</th></tr>}</thead><tbody>
+      {filtered.map(row => view === "purchases" ? <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{row.item.category || "—"}</td><td>{qty(row.purchaseQtyGrams)} {row.item.displayUnit}</td><td>{money(row.purchaseCost)}</td></tr> : view === "production" || view === "packaging" ? <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{qty(row.openingQty)} {row.item.displayUnit}</td><td>{qty(row.inQty)} {row.item.displayUnit}</td><td>{qty(row.issuedQty)} {row.item.displayUnit}</td><td>{qty(row.returnQty)} {row.item.displayUnit}</td><td>{qty(row.damageQtyGrams)} {row.item.displayUnit}</td><td>{qty(row.usedQtyGrams)} {row.item.displayUnit}</td><td>{qty(row.closingQty)} {row.item.displayUnit}</td><td>{money(row.averageCost)}</td><td>{money(row.usedValue)}</td><td>{money(row.closingValue)}</td></tr> : view === "sales" ? <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{qty(row.openingQty)} {row.item.displayUnit}</td><td>{qty(row.produceQtyGrams)} {row.item.displayUnit}</td><td>{qty(row.sellQtyGrams)} {row.item.displayUnit}</td><td>{qty(row.closingQty)} {row.item.displayUnit}</td><td>{money(row.salesValue)}</td><td>{(row.salesByShop ?? []).map((sale: any) => <span key={sale.shopId}>{sale.shopName}: {money(sale.salesValue)}<br /></span>) || "—"}</td></tr> : <tr key={row.item.id}><td><strong>{row.item.name}</strong></td><td>{qty(row.damageQtyGrams)} {row.item.displayUnit}</td><td>{money(row.averageCost)}</td><td>{money(row.damageValue)}</td></tr>)}
+      {!filtered.length && <tr><td colSpan={11}><div className="empty-state">No {title[view].toLowerCase()} data in the selected period.</div></td></tr>}
     </tbody></table></section>
   </>;
 }

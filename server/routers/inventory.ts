@@ -18,6 +18,7 @@ import {
   calculateSalesClosing,
   displayQuantity,
   isItemEffectiveOnDate,
+  normalizePurchaseBaseQuantity,
   normalizePurchaseQuantity,
 } from "../../shared/inventory";
 import { requireDb } from "../db";
@@ -80,12 +81,12 @@ async function operationLedgerForDate(date: string, type: "production" | "packag
       .select({ itemId: purchases.itemId, quantityGrams: purchases.quantityGrams })
       .from(purchases)
       .innerJoin(items, eq(purchases.itemId, items.id))
-      .where(and(eq(items.itemType, type), lt(purchases.purchaseDate, dbDate(date)))),
+      .where(and(eq(items.itemType, type), eq(purchases.status, "confirmed"), lt(purchases.purchaseDate, dbDate(date)))),
     db
       .select({ itemId: purchases.itemId, quantityGrams: purchases.quantityGrams })
       .from(purchases)
       .innerJoin(items, eq(purchases.itemId, items.id))
-      .where(and(eq(items.itemType, type), eq(purchases.purchaseDate, dbDate(date)))),
+      .where(and(eq(items.itemType, type), eq(purchases.status, "confirmed"), eq(purchases.purchaseDate, dbDate(date)))),
     db
       .select()
       .from(operations)
@@ -133,7 +134,7 @@ async function monthlyCostMap(monthDate: string) {
   const entries = await db
     .select({ itemId: purchases.itemId, quantityGrams: purchases.quantityGrams, totalCost: purchases.totalCost })
     .from(purchases)
-    .where(and(gte(purchases.purchaseDate, dbDate(monthStart(monthDate))), lt(purchases.purchaseDate, dbDate(nextMonthStart(monthDate)))));
+    .where(and(eq(purchases.status, "confirmed"), gte(purchases.purchaseDate, dbDate(monthStart(monthDate))), lt(purchases.purchaseDate, dbDate(nextMonthStart(monthDate)))));
   const grouped = new Map<number, Array<{ quantityGrams: number; totalCost: number }>>();
   entries.forEach(entry => {
     const group = grouped.get(entry.itemId) ?? [];
@@ -146,13 +147,14 @@ async function monthlyCostMap(monthDate: string) {
 export const inventoryRouter = router({
   items: router({
     list: protectedProcedure
-      .input(z.object({ date: businessDate.optional(), type: itemType.optional() }).optional())
+      .input(z.object({ date: businessDate.optional(), type: itemType.optional(), includeInactive: z.boolean().optional() }).optional())
       .query(async ({ input, ctx }) => {
         const db = await requireDb();
         const selectedDate = input?.date;
         const filters = [input?.type ? eq(items.itemType, input.type) : undefined];
         if (selectedDate) {
-          filters.push(lte(items.effectiveFrom, dbDate(selectedDate)), or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(selectedDate))));
+          filters.push(lte(items.effectiveFrom, dbDate(selectedDate)));
+          if (!input?.includeInactive) filters.push(or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(selectedDate))));
         }
         const result = await db
           .select()
@@ -272,7 +274,7 @@ export const inventoryRouter = router({
           .innerJoin(items, eq(purchases.itemId, items.id))
           .where(and(...conditions as []))
           .orderBy(desc(purchases.purchaseDate), desc(purchases.id));
-        return result.map(row => ({ ...row.purchase, item: publicItem(row.item) }));
+        return result.map(row => ({ ...row.purchase, baseQuantity: row.purchase.quantityGrams, baseUnit: row.item.displayUnit, item: publicItem(row.item) }));
       }),
     create: protectedProcedure
       .input(
@@ -282,6 +284,7 @@ export const inventoryRouter = router({
           inputQuantity: positive,
           inputUnit: purchaseUnit,
           totalCost: nonNegative,
+          status: z.enum(["draft", "confirmed"]).default("confirmed"),
           note: z.string().trim().max(2000).optional().nullable(),
         }),
       )
@@ -290,13 +293,13 @@ export const inventoryRouter = router({
         const item = await db.select().from(items).where(eq(items.id, input.itemId)).limit(1);
         if (!item[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Item not found." });
         ensureEffective(item[0], input.purchaseDate);
-        if (item[0].itemType === "packaging" && input.inputUnit !== "pcs") {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Packaging purchases must be entered in pieces." });
+        if (item[0].displayUnit === "pcs" && input.inputUnit !== "pcs") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Piece-based items must be purchased in pcs and remain in pcs inventory." });
         }
-        if (item[0].itemType === "production" && input.inputUnit === "pcs") {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Production purchases must use g, kg, or viss." });
+        if (item[0].displayUnit === "g" && input.inputUnit === "pcs") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Weight-based items must use g, kg, or viss." });
         }
-        const quantityGrams = normalizePurchaseQuantity(input.inputQuantity, input.inputUnit, number(item[0].gramsPerDisplayUnit));
+        const quantityGrams = normalizePurchaseBaseQuantity(input.inputQuantity, input.inputUnit, item[0].displayUnit);
         const unitCostPerGram = input.totalCost / quantityGrams;
         const result = await db.insert(purchases).values({
           purchaseDate: dbDate(input.purchaseDate),
@@ -306,10 +309,19 @@ export const inventoryRouter = router({
           quantityGrams: quantityGrams.toString(),
           totalCost: input.totalCost.toFixed(2),
           unitCostPerGram: unitCostPerGram.toString(),
+          status: input.status,
+          confirmedAt: input.status === "confirmed" ? new Date() : null,
           note: input.note || null,
           createdBy: ctx.user.id,
         });
         return { id: Number(result[0].insertId), quantityGrams };
+      }),
+    confirm: protectedProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const db = await requireDb();
+        await db.update(purchases).set({ status: "confirmed", confirmedAt: new Date() }).where(eq(purchases.id, input.id));
+        return { success: true };
       }),
   }),
 
@@ -426,6 +438,7 @@ export const inventoryRouter = router({
           const openingQtyGrams = opening.get(item.id) ?? 0;
           const produceQtyGrams = number(row?.produceQtyGrams);
           const sellQtyGrams = number(row?.sellQtyGrams);
+          const sellingPricePerUnit = number(row?.sellingPricePerUnit) || priceByItem.get(item.id) || 0;
           return {
             item: publicItem(item),
             salesEntryId: row?.id ?? null,
@@ -434,22 +447,26 @@ export const inventoryRouter = router({
             produceQtyGrams,
             sellQtyGrams,
             closingQtyGrams: calculateSalesClosing(openingQtyGrams, produceQtyGrams, sellQtyGrams),
-            sellingPricePerUnit: number(row?.sellingPricePerUnit) || priceByItem.get(item.id) || 0,
+            sellingPricePerUnit,
+            totalPrice: sellQtyGrams * sellingPricePerUnit,
             note: row?.note ?? "",
           };
         });
       }),
     save: protectedProcedure
-      .input(z.object({ date: businessDate, shopId: z.number().int().positive(), itemId: z.number().int().positive(), produceQtyGrams: nonNegative, sellQtyGrams: nonNegative, sellingPricePerUnit: nonNegative, note: z.string().trim().max(2000).optional().nullable() }))
+      .input(z.object({ date: businessDate, shopId: z.number().int().positive(), itemId: z.number().int().positive(), produceQtyGrams: nonNegative, sellQtyGrams: nonNegative, note: z.string().trim().max(2000).optional().nullable() }))
       .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
         const item = await db.select().from(items).where(eq(items.id, input.itemId)).limit(1);
         if (!item[0] || item[0].itemType !== "sales") throw new TRPCError({ code: "BAD_REQUEST", message: "The item does not belong to Sales." });
         ensureEffective(item[0], input.date);
+        const price = await db.select().from(shopItemPrices).where(and(eq(shopItemPrices.shopId, input.shopId), eq(shopItemPrices.itemId, input.itemId), eq(shopItemPrices.active, true))).limit(1);
+        if (!price[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Set an active shop-item price before saving a sale." });
+        const sellingPricePerUnit = number(price[0].sellingPricePerUnit);
         await db
           .insert(salesEntries)
-          .values({ ...input, saleDate: dbDate(input.date), produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: input.sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id })
-          .onDuplicateKeyUpdate({ set: { produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: input.sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id } });
+          .values({ ...input, saleDate: dbDate(input.date), produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id })
+          .onDuplicateKeyUpdate({ set: { produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id } });
         return { success: true };
       }),
   }),
@@ -492,7 +509,7 @@ export const inventoryRouter = router({
     const [production, packaging, dayPurchases, salesRows, previousSalesRows, salesItems, costMap] = await Promise.all([
       operationLedgerForDate(input.date, "production"),
       operationLedgerForDate(input.date, "packaging"),
-      db.select().from(purchases).where(eq(purchases.purchaseDate, dbDate(input.date))),
+      db.select().from(purchases).where(and(eq(purchases.status, "confirmed"), eq(purchases.purchaseDate, dbDate(input.date)))),
       db.select().from(salesEntries).where(eq(salesEntries.saleDate, dbDate(input.date))),
       db.select().from(salesEntries).where(lt(salesEntries.saleDate, dbDate(input.date))),
       db.select().from(items).where(and(eq(items.itemType, "sales"), lte(items.effectiveFrom, dbDate(input.date)), or(isNull(items.inactiveFrom), gt(items.inactiveFrom, dbDate(input.date))))),
@@ -518,7 +535,8 @@ export const inventoryRouter = router({
       ...operationRows.map(row => ({ item: row.item, closingQtyGrams: row.closingQtyGrams })),
       ...salesItems.map(item => ({ item: publicItem(item), closingQtyGrams: salesClosingByItem.get(item.id) ?? 0 })),
     ].filter(row => row.closingQtyGrams < number(row.item.minStockGrams));
-    return { purchaseQtyGrams, purchaseCost, closingValue, damageQtyGrams, damageValue, salesRevenue, salesMargin: salesRevenue - salesCost, lowStock };
+    const salesQty = salesRows.reduce((total, row) => total + number(row.sellQtyGrams), 0);
+    return { purchaseQtyGrams, purchaseCost, closingValue, damageQtyGrams, damageValue, salesQty, salesRevenue, salesMargin: salesRevenue - salesCost, lowStock };
   }),
 
   reports: router({
@@ -527,12 +545,21 @@ export const inventoryRouter = router({
       .query(async ({ input }) => {
         if (input.from > input.to) throw new TRPCError({ code: "BAD_REQUEST", message: "Start date must not be later than end date." });
         const db = await requireDb();
-        const [purchaseRows, operationRows, saleRows, itemRows] = await Promise.all([
-          db.select({ purchase: purchases, item: items }).from(purchases).innerJoin(items, eq(purchases.itemId, items.id)).where(and(gte(purchases.purchaseDate, dbDate(input.from)), lte(purchases.purchaseDate, dbDate(input.to)))),
+        const [purchaseRows, operationRows, saleRows, priorSaleRows, itemRows, openingProduction, openingPackaging, closingProduction, closingPackaging] = await Promise.all([
+          db.select({ purchase: purchases, item: items }).from(purchases).innerJoin(items, eq(purchases.itemId, items.id)).where(and(eq(purchases.status, "confirmed"), gte(purchases.purchaseDate, dbDate(input.from)), lte(purchases.purchaseDate, dbDate(input.to)))),
           db.select({ operation: operations, item: items }).from(operations).innerJoin(items, eq(operations.itemId, items.id)).where(and(gte(operations.operationDate, dbDate(input.from)), lte(operations.operationDate, dbDate(input.to)))),
           db.select({ sale: salesEntries, item: items, shop: shops }).from(salesEntries).innerJoin(items, eq(salesEntries.itemId, items.id)).innerJoin(shops, eq(salesEntries.shopId, shops.id)).where(and(gte(salesEntries.saleDate, dbDate(input.from)), lte(salesEntries.saleDate, dbDate(input.to)))),
+          db.select().from(salesEntries).where(lt(salesEntries.saleDate, dbDate(input.from))),
           db.select().from(items).orderBy(asc(items.itemType), asc(items.sortOrder)),
+          operationLedgerForDate(input.from, "production"),
+          operationLedgerForDate(input.from, "packaging"),
+          operationLedgerForDate(input.to, "production"),
+          operationLedgerForDate(input.to, "packaging"),
         ]);
+        const openingByItem = new Map([...openingProduction, ...openingPackaging].map(row => [row.item.id, row.openingQtyGrams]));
+        const closingByItem = new Map([...closingProduction, ...closingPackaging].map(row => [row.item.id, row.closingQtyGrams]));
+        const salesOpeningByItem = new Map<number, number>();
+        priorSaleRows.forEach(row => salesOpeningByItem.set(row.itemId, (salesOpeningByItem.get(row.itemId) ?? 0) + number(row.produceQtyGrams) - number(row.sellQtyGrams)));
         const monthlyMaps = new Map<string, Map<number, number>>();
         const costsFor = async (date: string) => {
           const month = monthStart(date);
@@ -552,6 +579,12 @@ export const inventoryRouter = router({
           }
           return {
             item: publicItem(item),
+            openingQty: item.itemType === "sales" ? salesOpeningByItem.get(item.id) ?? 0 : openingByItem.get(item.id) ?? 0,
+            inQty: matchedPurchases.reduce((sum, row) => sum + number(row.purchase.quantityGrams), 0),
+            issuedQty: matchedOperations.reduce((sum, row) => sum + number(row.operation.issuedQtyGrams), 0),
+            returnQty: matchedOperations.reduce((sum, row) => sum + number(row.operation.returnQtyGrams), 0),
+            closingQty: item.itemType === "sales" ? calculateSalesClosing(salesOpeningByItem.get(item.id) ?? 0, matchedSales.reduce((sum, row) => sum + number(row.sale.produceQtyGrams), 0), matchedSales.reduce((sum, row) => sum + number(row.sale.sellQtyGrams), 0)) : closingByItem.get(item.id) ?? 0,
+            averageCost: (await costsFor(input.to)).get(item.id) ?? 0,
             purchaseQtyGrams: matchedPurchases.reduce((sum, row) => sum + number(row.purchase.quantityGrams), 0),
             purchaseCost: matchedPurchases.reduce((sum, row) => sum + number(row.purchase.totalCost), 0),
             usedQtyGrams: matchedOperations.reduce((sum, row) => sum + number(row.operation.issuedQtyGrams) - number(row.operation.returnQtyGrams) - number(row.operation.damageQtyGrams), 0),
@@ -561,6 +594,8 @@ export const inventoryRouter = router({
             produceQtyGrams: matchedSales.reduce((sum, row) => sum + number(row.sale.produceQtyGrams), 0),
             sellQtyGrams: matchedSales.reduce((sum, row) => sum + number(row.sale.sellQtyGrams), 0),
             salesValue: matchedSales.reduce((sum, row) => sum + number(row.sale.sellQtyGrams) * number(row.sale.sellingPricePerUnit), 0),
+            closingValue: (item.itemType === "sales" ? 0 : closingByItem.get(item.id) ?? 0) * ((await costsFor(input.to)).get(item.id) ?? 0),
+            salesByShop: Array.from(new Map(matchedSales.map(row => [row.shop.id, { shopName: row.shop.name, sellQty: 0, salesValue: 0 }])).entries()).map(([shopId, summary]) => ({ shopId, ...matchedSales.filter(row => row.shop.id === shopId).reduce((total, row) => ({ ...total, sellQty: total.sellQty + number(row.sale.sellQtyGrams), salesValue: total.salesValue + number(row.sale.sellQtyGrams) * number(row.sale.sellingPricePerUnit) }), summary) })),
           };
         }));
         return { purchases: purchaseRows, operations: operationRows, sales: saleRows, perItem };

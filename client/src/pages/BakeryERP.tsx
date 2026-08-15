@@ -1,6 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { normalizeSpreadsheetBusinessDate, stripUtf8Bom, toUtf8BomCsv } from "../../../shared/spreadsheet";
 import DetailedReports from "./DetailedReports";
 import RecipeManager from "./RecipeManager";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
@@ -113,8 +114,8 @@ function ItemForm({ initial, onClose, onDone, isAdmin }: { initial?: any; onClos
     {!initial && <><label>List<select value={form.itemType} onChange={event => setForm({ ...form, itemType: event.target.value as ItemType, displayUnit: event.target.value === "packaging" ? "pcs" : form.displayUnit })}><option value="production">Production</option><option value="packaging">Packaging</option><option value="sales">Sales</option></select></label>
     <label>Display unit<select value={form.displayUnit} onChange={event => setForm({ ...form, displayUnit: event.target.value as "g" | "pcs" })}><option value="g">g</option><option value="pcs">pcs</option></select></label></>}
     <label>Effective start date<input required type="date" value={form.effectiveFrom} onChange={event => setForm({ ...form, effectiveFrom: event.target.value })} /></label>
-    <label>Minimum stock (grams)<input required min="0" step="0.001" type="number" value={form.minStockGrams} onChange={event => setForm({ ...form, minStockGrams: Number(event.target.value) })} /></label>
-    <label>Grams per {form.displayUnit}<input required min="0.001" step="0.001" type="number" value={form.gramsPerDisplayUnit} onChange={event => setForm({ ...form, gramsPerDisplayUnit: Number(event.target.value) })} /></label>
+    <label>Minimum stock ({form.displayUnit})<input required min="0" step="0.001" type="number" value={form.minStockGrams} onChange={event => setForm({ ...form, minStockGrams: Number(event.target.value) })} /></label>
+    {form.displayUnit === "g" && <label>Base grams per display unit<input required min="0.001" step="0.001" type="number" value={form.gramsPerDisplayUnit} onChange={event => setForm({ ...form, gramsPerDisplayUnit: Number(event.target.value) })} /></label>}
     {isAdmin && form.itemType === "sales" && <label>Cost per unit<input min="0" step="0.01" type="number" value={form.costPerUnit} onChange={event => setForm({ ...form, costPerUnit: event.target.value })} /></label>}
     <div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save item"}</button></div>
   </form></Modal>;
@@ -122,7 +123,8 @@ function ItemForm({ initial, onClose, onDone, isAdmin }: { initial?: any; onClos
 
 function ItemsPage({ date, isAdmin }: { date: string; isAdmin: boolean }) {
   const utils = trpc.useUtils();
-  const query = trpc.inventory.items.list.useQuery({ date });
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const query = trpc.inventory.items.list.useQuery({ date, includeInactive });
   const deactivate = trpc.inventory.items.deactivate.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const reactivate = trpc.inventory.items.reactivate.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const reorder = trpc.inventory.items.reorder.useMutation({ onSuccess: () => utils.inventory.invalidate() });
@@ -138,11 +140,11 @@ function ItemsPage({ date, isAdmin }: { date: string; isAdmin: boolean }) {
   };
   const showSalesCost = type === "sales" && isAdmin;
   return <>
-    <PageHeader title="Item Dashboard" subtitle="Date-effective master lists for Packaging, Production, and Sales." action={isAdmin ? <button className="primary-button" onClick={() => setEditing("new")}><Plus size={16} /> Add item</button> : <span className="read-only-label">Read-only access</span>} />
+    <PageHeader title="Item Dashboard" subtitle="Date-effective master lists for Packaging, Production, and Sales." action={isAdmin ? <span className="header-actions"><button onClick={() => setIncludeInactive(!includeInactive)}>{includeInactive ? "Hide inactive" : "Show inactive"}</button><button className="primary-button" onClick={() => setEditing("new")}><Plus size={16} /> Add item</button></span> : <span className="read-only-label">Read-only access</span>} />
     <div className="section-tabs">{(["production", "packaging", "sales"] as ItemType[]).map(value => <button className={type === value ? "active" : ""} onClick={() => setType(value)} key={value}>{value[0].toUpperCase() + value.slice(1)}</button>)}</div>
-    <Card className="table-card"><table><thead><tr><th>{isAdmin ? "Order" : ""}</th><th>Name</th><th>Category</th><th>Start</th><th>Minimum stock</th>{showSalesCost && <th>Cost per unit</th>}{isAdmin && <th>Action</th>}</tr></thead><tbody>
-      {list.map((item, index) => { const salesCost = "costPerUnit" in item ? item.costPerUnit : null; return <tr key={item.id}><td className="order-actions">{isAdmin && <><button disabled={index === 0} onClick={() => move(index, -1)} aria-label="Move up"><ArrowUp size={15} /></button><button disabled={index === list.length - 1} onClick={() => move(index, 1)} aria-label="Move down"><ArrowDown size={15} /></button></>}</td><td><strong>{item.name}</strong>{item.code && <small>{item.code}</small>}</td><td>{item.category || "—"}</td><td>{String(item.effectiveFrom).slice(0, 10)}</td><td>{unitLabel(item, asNumber(item.minStockGrams))}</td>{showSalesCost && <td>{salesCost === null || salesCost === undefined ? "—" : money(salesCost)}</td>}{isAdmin && <td className="row-actions"><button onClick={() => setEditing(item)}>Rename / edit</button><button className="danger-button" onClick={() => setDeleting(item)}>Delete by date</button></td>}</tr>; })}
-      {!list.length && <tr><td colSpan={(showSalesCost ? 1 : 0) + (isAdmin ? 6 : 5)}><EmptyState>No {type} items are active on this date.</EmptyState></td></tr>}
+    <Card className="table-card"><table><thead><tr><th>{isAdmin ? "Order" : ""}</th><th>Name</th><th>Category</th><th>Created</th><th>Start</th><th>Inactive from</th><th>Status</th><th>Minimum stock</th>{showSalesCost && <th>Cost per unit</th>}{isAdmin && <th>Action</th>}</tr></thead><tbody>
+      {list.map((item, index) => { const salesCost = "costPerUnit" in item ? item.costPerUnit : null; const inactive = item.inactiveFrom && String(item.inactiveFrom).slice(0, 10) <= date; return <tr key={item.id}><td className="order-actions">{isAdmin && <><button disabled={index === 0} onClick={() => move(index, -1)} aria-label="Move up"><ArrowUp size={15} /></button><button disabled={index === list.length - 1} onClick={() => move(index, 1)} aria-label="Move down"><ArrowDown size={15} /></button></>}</td><td><strong>{item.name}</strong>{item.code && <small>{item.code}</small>}</td><td>{item.category || "—"}</td><td>{String(item.createdAt).slice(0, 10)}</td><td>{String(item.effectiveFrom).slice(0, 10)}</td><td>{item.inactiveFrom ? String(item.inactiveFrom).slice(0, 10) : "—"}</td><td><span className={inactive ? "status-muted" : "status-good"}>{inactive ? "Inactive" : "Active"}</span></td><td>{unitLabel(item, asNumber(item.minStockGrams))}</td>{showSalesCost && <td>{salesCost === null || salesCost === undefined ? "—" : money(salesCost)}</td>}{isAdmin && <td className="row-actions"><button onClick={() => setEditing(item)}>Rename / edit</button><button className="danger-button" onClick={() => setDeleting(item)}>Delete by date</button></td>}</tr>; })}
+      {!list.length && <tr><td colSpan={(showSalesCost ? 1 : 0) + (isAdmin ? 10 : 8)}><EmptyState>No {type} items are active on this date.</EmptyState></td></tr>}
     </tbody></table></Card>
     {editing && <ItemForm initial={editing === "new" ? undefined : editing} isAdmin={isAdmin} onClose={() => setEditing(null)} onDone={() => setEditing(null)} />}
     {deleting && <DeactivateItem item={deleting} onClose={() => setDeleting(null)} onDone={() => setDeleting(null)} deactivate={deactivate.mutate} reactivate={reactivate.mutate} />}
@@ -162,13 +164,14 @@ function PurchaseForm({ itemType, items, onClose, onDone }: { itemType: "product
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState<"g" | "kg" | "viss" | "pcs">(itemType === "packaging" ? "pcs" : "kg");
   const [cost, setCost] = useState("");
+  const [status, setStatus] = useState<"draft" | "confirmed">("confirmed");
   const [note, setNote] = useState("");
   const selected = items.find(item => item.id === itemId);
-  const preview = selected && quantity ? asNumber(quantity) * (unit === "kg" ? 1000 : unit === "viss" ? 1632.93 : unit === "pcs" ? asNumber(selected.gramsPerDisplayUnit) : 1) : 0;
-  return <Modal title={`Add ${itemType} purchase`} onClose={onClose}><form className="form-grid" onSubmit={event => { event.preventDefault(); create.mutate({ purchaseDate: date, itemId, inputQuantity: Number(quantity), inputUnit: unit, totalCost: Number(cost), note: note || null }); }}>
+  const preview = selected && quantity ? asNumber(quantity) * (selected.displayUnit === "pcs" ? 1 : unit === "kg" ? 1000 : unit === "viss" ? 1632.93 : 1) : 0;
+  return <Modal title={`Add ${itemType} purchase`} onClose={onClose}><form className="form-grid" onSubmit={event => { event.preventDefault(); create.mutate({ purchaseDate: date, itemId, inputQuantity: Number(quantity), inputUnit: unit, totalCost: Number(cost), status, note: note || null }); }}>
     <label>Date<input type="date" required value={date} onChange={event => setDate(event.target.value)} /></label><label>Item<select required value={itemId} onChange={event => setItemId(Number(event.target.value))}>{items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label>Quantity<input type="number" required min="0.001" step="0.001" value={quantity} onChange={event => setQuantity(event.target.value)} /></label><label>Input unit<select value={unit} onChange={event => setUnit(event.target.value as typeof unit)}>{itemType === "packaging" ? <option value="pcs">pcs</option> : <><option value="g">g</option><option value="kg">kg</option><option value="viss">viss</option></>}</select></label>
-    <label>Total cost<input type="number" required min="0" step="0.01" value={cost} onChange={event => setCost(event.target.value)} /></label><p className="form-note">Stored internally: <strong>{qty(preview)} g</strong>{cost && preview > 0 && <> · {money(asNumber(cost) / preview)} per g</>}</p>
+    <label>Total price<input type="number" required min="0" step="0.01" value={cost} onChange={event => setCost(event.target.value)} /></label><label>Status<select value={status} onChange={event => setStatus(event.target.value as "draft" | "confirmed")}><option value="confirmed">Confirmed</option><option value="draft">Draft</option></select></label><p className="form-note">Inventory base quantity: <strong>{qty(preview)} {selected?.displayUnit ?? ""}</strong>{cost && preview > 0 && <> · {money(asNumber(cost) / preview)} per {selected?.displayUnit ?? "base unit"}</>}</p>
     <label className="full-width">Note<textarea value={note} onChange={event => setNote(event.target.value)} placeholder="Optional note" /></label><div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!items.length || create.isPending}>{create.isPending ? "Saving…" : "Save purchase"}</button></div>
   </form></Modal>;
 }
@@ -178,11 +181,13 @@ function PurchasesPage({ date }: { date: string }) {
   const purchaseQuery = trpc.inventory.purchases.list.useQuery();
   const [type, setType] = useState<"production" | "packaging">("production");
   const [add, setAdd] = useState(false);
+  const utils = trpc.useUtils();
+  const confirm = trpc.inventory.purchases.confirm.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const items = (allItems.data ?? []).filter(item => item.itemType === type);
   const rows = (purchaseQuery.data ?? []).filter(row => row.item.itemType === type);
   return <><PageHeader title="Purchase" subtitle="Confirmed purchase quantities feed the corresponding daily In balance." action={<button className="primary-button" onClick={() => setAdd(true)}><Plus size={16} /> Add purchase</button>} />
     <div className="section-tabs"><button className={type === "production" ? "active" : ""} onClick={() => setType("production")}>Production (g / kg / viss)</button><button className={type === "packaging" ? "active" : ""} onClick={() => setType("packaging")}>Packaging (pcs)</button></div>
-    <Card className="table-card"><table><thead><tr><th>Date</th><th>Name</th><th>Qty</th><th>Internal grams</th><th>Cost</th><th>Note</th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{String(row.purchaseDate).slice(0, 10)}</td><td><strong>{row.item.name}</strong></td><td>{qty(row.inputQuantity)} {row.inputUnit}</td><td>{qty(row.quantityGrams)} g</td><td>{money(row.totalCost)}</td><td>{row.note || "—"}</td></tr>)}{!rows.length && <tr><td colSpan={6}><EmptyState>No {type} purchases recorded.</EmptyState></td></tr>}</tbody></table></Card>
+    <Card className="table-card"><table><thead><tr><th>Date</th><th>Name</th><th>Qty</th><th>Purchase unit</th><th>Base qty</th><th>Unit price</th><th>Total price</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{String(row.purchaseDate).slice(0, 10)}</td><td><strong>{row.item.name}</strong></td><td>{qty(row.inputQuantity)}</td><td>{row.inputUnit}</td><td>{qty(row.baseQuantity)} {row.baseUnit}</td><td>{money(row.unitCostPerGram)} / {row.baseUnit}</td><td>{money(row.totalCost)}</td><td><span className={row.status === "confirmed" ? "status-good" : "status-muted"}>{row.status}</span></td><td>{row.note || "—"}</td><td>{row.status === "draft" && <button onClick={() => confirm.mutate({ id: row.id })} disabled={confirm.isPending}>Confirm</button>}</td></tr>)}{!rows.length && <tr><td colSpan={10}><EmptyState>No {type} purchases recorded.</EmptyState></td></tr>}</tbody></table></Card>
     {add && <PurchaseForm itemType={type} items={items} onClose={() => setAdd(false)} onDone={() => setAdd(false)} />}
   </>;
 }
@@ -210,10 +215,11 @@ function OperationsPage({ date, type }: { date: string; type: OperationType }) {
 function SalesRow({ row, shopId }: { row: any; shopId: number }) {
   const utils = trpc.useUtils();
   const save = trpc.inventory.sales.save.useMutation({ onSuccess: () => utils.inventory.invalidate() });
-  const [values, setValues] = useState({ produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note, price: row.sellingPricePerUnit });
-  useEffect(() => setValues({ produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note, price: row.sellingPricePerUnit }), [row.produceQtyGrams, row.sellQtyGrams, row.note, row.sellingPricePerUnit]);
+  const [values, setValues] = useState({ produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note });
+  useEffect(() => setValues({ produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note }), [row.produceQtyGrams, row.sellQtyGrams, row.note]);
   const closing = row.openingQtyGrams + asNumber(values.produce) - asNumber(values.sell);
-  return <tr><td><strong>{row.item.name}</strong></td><td>{unitLabel(row.item, row.openingQtyGrams)}</td><td><input min="0" step="0.001" type="number" value={values.produce} onChange={event => setValues({ ...values, produce: event.target.value })} /></td><td><input min="0" step="0.001" type="number" value={values.sell} onChange={event => setValues({ ...values, sell: event.target.value })} /></td><td>{unitLabel(row.item, closing)}</td><td><input value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={save.isPending} onClick={() => save.mutate({ date: row.date, shopId, itemId: row.item.id, produceQtyGrams: Math.max(0, asNumber(values.produce)), sellQtyGrams: Math.max(0, asNumber(values.sell)), sellingPricePerUnit: Math.max(0, asNumber(values.price)), note: values.note || null })}>Save</button></td></tr>;
+  const total = Math.max(0, asNumber(values.sell)) * asNumber(row.sellingPricePerUnit);
+  return <tr><td><strong>{row.item.name}</strong></td><td>{unitLabel(row.item, row.openingQtyGrams)}</td><td><input min="0" step="0.001" type="number" value={values.produce} onChange={event => setValues({ ...values, produce: event.target.value })} /></td><td><input min="0" step="0.001" type="number" value={values.sell} onChange={event => setValues({ ...values, sell: event.target.value })} /></td><td>{unitLabel(row.item, closing)}</td><td>{money(row.sellingPricePerUnit)}</td><td>{money(total)}</td><td><input value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={save.isPending} onClick={() => save.mutate({ date: row.date, shopId, itemId: row.item.id, produceQtyGrams: Math.max(0, asNumber(values.produce)), sellQtyGrams: Math.max(0, asNumber(values.sell)), note: values.note || null })}>Save</button></td></tr>;
 }
 
 function SalesPage({ date }: { date: string }) {
@@ -223,7 +229,7 @@ function SalesPage({ date }: { date: string }) {
   const daily = trpc.inventory.sales.daily.useQuery({ date, shopId: shopId ?? 1 }, { enabled: Boolean(shopId) });
   return <><PageHeader title="Sale daily ledger" subtitle="Produce and Sell are entered manually. Closing = Opening + Produce − Sell." />
     <Card className="toolbar-card"><label>Shop<select value={shopId ?? ""} onChange={event => setShopId(Number(event.target.value))}><option value="">Select a shop</option>{(shops.data ?? []).filter(shop => shop.active).map(shop => <option value={shop.id} key={shop.id}>{shop.name}</option>)}</select></label><p>Store-specific selling prices are managed in More → Shops.</p></Card>
-    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Note</th><th></th></tr></thead><tbody>{(daily.data ?? []).map(row => <SalesRow key={row.item.id} row={row} shopId={shopId} />)}{!daily.data?.length && <tr><td colSpan={7}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card>}
+    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th></th></tr></thead><tbody>{(daily.data ?? []).map(row => <SalesRow key={row.item.id} row={row} shopId={shopId} />)}{!daily.data?.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card>}
   </>;
 }
 
@@ -231,7 +237,7 @@ function DashboardPage({ date }: { date: string }) {
   const dashboard = trpc.inventory.dashboard.useQuery({ date });
   const data = dashboard.data;
   return <><PageHeader title="Dashboard" subtitle="Daily purchasing, stock, damage, margin, and replenishment overview." />
-    <div className="stats-grid"><Stat label="Daily purchase total" value={`${qty(data?.purchaseQtyGrams)} g · ${money(data?.purchaseCost)}`} /><Stat label="Closing total value" value={money(data?.closingValue)} tone="dark" /><Stat label="Damage total" value={`${qty(data?.damageQtyGrams)} g · ${money(data?.damageValue)}`} tone="warn" /><Stat label="Sales margin" value={money(data?.salesMargin)} tone="good" /></div>
+    <div className="stats-grid"><Stat label="Daily purchase total" value={`${qty(data?.purchaseQtyGrams)} base units · ${money(data?.purchaseCost)}`} /><Stat label="Closing total value" value={money(data?.closingValue)} tone="dark" /><Stat label="Damage total" value={`${qty(data?.damageQtyGrams)} base units · ${money(data?.damageValue)}`} tone="warn" /><Stat label="Sales total" value={`${qty(data?.salesQty)} units · ${money(data?.salesRevenue)}`} tone="good" /><Stat label="Sales margin" value={money(data?.salesMargin)} tone="good" /></div>
     <Card className="low-stock-card"><div className="card-title"><div><TriangleAlert size={18} /><h2>Low stock items</h2></div><span>{data?.lowStock.length ?? 0} alerts</span></div>{data?.lowStock.length ? <div className="alert-list">{data.lowStock.map((row, index) => <div key={`${row.item.id}-${index}`}><strong>{row.item.name}</strong><span>Closing {unitLabel(row.item, row.closingQtyGrams)} · Minimum {unitLabel(row.item, asNumber(row.item.minStockGrams))}</span></div>)}</div> : <EmptyState>All active item balances are at or above their minimum stock threshold.</EmptyState>}</Card>
   </>;
 }
@@ -249,6 +255,16 @@ function downloadWorkbook(filename: string, sheets: Array<{ name: string; rows: 
   const workbook = XLSX.utils.book_new();
   sheets.forEach(sheet => XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet.rows), sheet.name.slice(0, 31)));
   XLSX.writeFile(workbook, `${filename}.xlsx`);
+}
+
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  const blob = new Blob([toUtf8BomCsv(rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${filename}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function ShopPanel() {
@@ -313,34 +329,41 @@ function SpreadsheetPanel({ date }: { date: string }) {
   const createPurchase = trpc.inventory.purchases.create.useMutation(); const saveOperation = trpc.inventory.operations.save.useMutation(); const saveSale = trpc.inventory.sales.save.useMutation();
   const [kind, setKind] = useState<ExchangeKind>("purchases"); const [message, setMessage] = useState("");
   const templateRows: Record<ExchangeKind, Record<string, unknown>[]> = {
-    purchases: [{ Date: date, "Item ID": "", Qty: "", Unit: "kg", "Total Cost": "", Note: "" }],
+    purchases: [{ Date: date, "Item ID": "", Qty: "", Unit: "kg", "Total Price": "", Status: "confirmed", Note: "" }],
     production: [{ Date: date, "Item ID": "", "Issued g": 0, "Return g": 0, "Damage g": 0, Note: "" }],
     packaging: [{ Date: date, "Item ID": "", "Issued g": 0, "Return g": 0, "Damage g": 0, Note: "" }],
-    sales: [{ Date: date, "Shop ID": shopId ?? "", "Item ID": "", "Produce g": 0, "Sell g": 0, "Price per Unit": 0, Note: "" }],
+    sales: [{ Date: date, "Shop ID": shopId ?? "", "Item ID": "", "Produce Qty": 0, "Sell Qty": 0, Note: "" }],
   };
   const downloadTemplate = () => downloadWorkbook(`bakery-${kind}-template`, [{ name: "Template", rows: templateRows[kind] }]);
+  const downloadCsvTemplate = () => downloadCsv(`bakery-${kind}-template`, templateRows[kind]);
   const exportTable = () => {
     const itemName = new Map((itemQuery.data ?? []).map(item => [item.id, item.name]));
-    const rows = kind === "purchases" ? (purchaseQuery.data ?? []).map(row => ({ Date: String(row.purchaseDate).slice(0, 10), "Item ID": row.itemId, Name: row.item.name, Qty: row.inputQuantity, Unit: row.inputUnit, "Internal g": row.quantityGrams, "Total Cost": row.totalCost, Note: row.note || "" })) : kind === "production" ? (production.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : kind === "packaging" ? (packaging.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : (sales.data ?? []).map(row => ({ Date: date, "Shop ID": shopId, "Item ID": row.item.id, Name: itemName.get(row.item.id), Opening: row.openingQtyGrams, Produce: row.produceQtyGrams, Sell: row.sellQtyGrams, Closing: row.closingQtyGrams, "Price per Unit": row.sellingPricePerUnit, Note: row.note || "" }));
+    const rows = kind === "purchases" ? (purchaseQuery.data ?? []).map(row => ({ Date: String(row.purchaseDate).slice(0, 10), "Item ID": row.itemId, Name: row.item.name, Qty: row.inputQuantity, Unit: row.inputUnit, "Base Qty": row.baseQuantity, "Base Unit": row.baseUnit, "Unit Price": row.unitCostPerGram, "Total Price": row.totalCost, Status: row.status, Note: row.note || "" })) : kind === "production" ? (production.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : kind === "packaging" ? (packaging.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : (sales.data ?? []).map(row => ({ Date: date, "Shop ID": shopId, "Item ID": row.item.id, Name: itemName.get(row.item.id), Opening: row.openingQtyGrams, Produce: row.produceQtyGrams, Sell: row.sellQtyGrams, Closing: row.closingQtyGrams, "Unit Price": row.sellingPricePerUnit, "Total Price": row.totalPrice, Note: row.note || "" }));
     downloadWorkbook(`bakery-${kind}-${date}`, [{ name: kind, rows }]);
+  };
+  const exportCsv = () => {
+    const rows = kind === "purchases" ? (purchaseQuery.data ?? []).map(row => ({ Date: String(row.purchaseDate).slice(0, 10), "Item ID": row.itemId, Name: row.item.name, Qty: row.inputQuantity, Unit: row.inputUnit, "Base Qty": row.baseQuantity, "Base Unit": row.baseUnit, "Unit Price": row.unitCostPerGram, "Total Price": row.totalCost, Status: row.status, Note: row.note || "" })) : kind === "production" ? (production.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : kind === "packaging" ? (packaging.data ?? []).map(row => ({ Date: date, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, In: row.inQtyGrams, Issued: row.issuedQtyGrams, Return: row.returnQtyGrams, Damage: row.damageQtyGrams, Used: row.usedQtyGrams, Closing: row.closingQtyGrams, Note: row.note || "" })) : (sales.data ?? []).map(row => ({ Date: date, "Shop ID": shopId, "Item ID": row.item.id, Name: row.item.name, Opening: row.openingQtyGrams, Produce: row.produceQtyGrams, Sell: row.sellQtyGrams, Closing: row.closingQtyGrams, "Unit Price": row.sellingPricePerUnit, "Total Price": row.totalPrice, Note: row.note || "" }));
+    downloadCsv(`bakery-${kind}-${date}`, rows);
   };
   const importFile = async (file: File) => {
     setMessage("Reading spreadsheet…");
     try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" }); const firstSheet = workbook.Sheets[workbook.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false });
+      const isCsv = file.name.toLowerCase().endsWith(".csv");
+      const source = isCsv ? stripUtf8Bom(await file.text()) : await file.arrayBuffer();
+      const workbook = XLSX.read(source, { type: isCsv ? "string" : "array" }); const firstSheet = workbook.Sheets[workbook.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "", raw: false });
       if (!rows.length) throw new Error("The spreadsheet contains no data rows.");
       let completed = 0;
       for (const row of rows) {
-        const rowDate = String(row.Date || ""); const id = Number(row["Item ID"]); if (!/^\d{4}-\d{2}-\d{2}$/.test(rowDate) || !Number.isInteger(id) || id <= 0) throw new Error("Every row needs a YYYY-MM-DD Date and numeric Item ID.");
-        if (kind === "purchases") await createPurchase.mutateAsync({ purchaseDate: rowDate, itemId: id, inputQuantity: Number(row.Qty), inputUnit: String(row.Unit) as "g" | "kg" | "viss" | "pcs", totalCost: Number(row["Total Cost"]), note: String(row.Note || "") || null });
+        const rowDate = normalizeSpreadsheetBusinessDate(row.Date) || ""; const id = Number(row["Item ID"]); if (!/^\d{4}-\d{2}-\d{2}$/.test(rowDate) || !Number.isInteger(id) || id <= 0) throw new Error("Every row needs a valid Date and numeric Item ID.");
+        if (kind === "purchases") await createPurchase.mutateAsync({ purchaseDate: rowDate, itemId: id, inputQuantity: Number(row.Qty), inputUnit: String(row.Unit) as "g" | "kg" | "viss" | "pcs", totalCost: Number(row["Total Price"] ?? row["Total Cost"]), status: String(row.Status || "confirmed") === "draft" ? "draft" : "confirmed", note: String(row.Note || "") || null });
         if (kind === "production" || kind === "packaging") await saveOperation.mutateAsync({ date: rowDate, itemId: id, type: kind, issuedQtyGrams: Number(row["Issued g"] || 0), returnQtyGrams: Number(row["Return g"] || 0), damageQtyGrams: Number(row["Damage g"] || 0), note: String(row.Note || "") || null });
-        if (kind === "sales") await saveSale.mutateAsync({ date: rowDate, shopId: Number(row["Shop ID"]), itemId: id, produceQtyGrams: Number(row["Produce g"] || 0), sellQtyGrams: Number(row["Sell g"] || 0), sellingPricePerUnit: Number(row["Price per Unit"] || 0), note: String(row.Note || "") || null });
+        if (kind === "sales") await saveSale.mutateAsync({ date: rowDate, shopId: Number(row["Shop ID"]), itemId: id, produceQtyGrams: Number(row["Produce Qty"] ?? row["Produce g"] ?? 0), sellQtyGrams: Number(row["Sell Qty"] ?? row["Sell g"] ?? 0), note: String(row.Note || "") || null });
         completed++;
       }
       await utils.inventory.invalidate(); setMessage(`Imported ${completed} ${kind} record(s).`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Import failed. Check the template and row values."); }
   };
-  return <Card className="more-panel"><div className="panel-heading"><FileSpreadsheet size={19} /><div><h2>Import / export</h2><p>Download an XLSX template, then import validated Purchase, Production, Packaging, or Sales records.</p></div></div><div className="exchange-actions"><label>Table<select value={kind} onChange={event => setKind(event.target.value as ExchangeKind)}><option value="purchases">Purchase</option><option value="production">Production</option><option value="packaging">Packaging</option><option value="sales">Sales</option></select></label><button onClick={downloadTemplate}><Download size={15} />Template</button><button onClick={exportTable}><Download size={15} />Export table</button><label className="file-button"><UploadIcon />Import XLSX<input type="file" accept=".xlsx,.xls" onChange={event => event.target.files?.[0] && importFile(event.target.files[0])} /></label></div>{message && <p className="exchange-message">{message}</p>}</Card>;
+  return <Card className="more-panel"><div className="panel-heading"><FileSpreadsheet size={19} /><div><h2>Import / export</h2><p>Download UTF-8 XLSX or CSV templates, then import validated Purchase, Production, Packaging, or Sales records.</p></div></div><div className="exchange-actions"><label>Table<select value={kind} onChange={event => setKind(event.target.value as ExchangeKind)}><option value="purchases">Purchase</option><option value="production">Production</option><option value="packaging">Packaging</option><option value="sales">Sales</option></select></label><button onClick={downloadTemplate}><Download size={15} />XLSX template</button><button onClick={downloadCsvTemplate}><Download size={15} />CSV template</button><button onClick={exportTable}><Download size={15} />Export XLSX</button><button onClick={exportCsv}><Download size={15} />Export CSV</button><label className="file-button"><UploadIcon />Import XLSX / CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0])} /></label></div>{message && <p className="exchange-message">{message}</p>}</Card>;
 }
 
 function UploadIcon() { return <span aria-hidden="true">↑</span>; }

@@ -26,3 +26,13 @@
 - [x] Document and complete end-to-end QA for cross-module flows and spreadsheet exchange.
 - [x] Restrict Item Dashboard add, edit, delete, reorder, and Sales cost inputs to administrators in the frontend.
 - [x] Execute and record live acceptance checks for critical operational flows without seeding business data.
+- [x] Compare the final requirement document with the current implementation and record the remaining workflow gaps.
+- [x] Preserve piece-based inventory in pcs rather than converting it to grams, while retaining gram conversion for weight-based items.
+- [x] Add confirmed purchase status and table fields for purchase unit, base quantity, unit price, total price, date, and note.
+- [x] Add Sales total-price calculation using the selected shop-item price and expand sales reporting by shop, item, and date range.
+- [x] Add report balances and valuations for opening, in, issued, return, damage, used, closing, cost, and total value.
+- [x] Add CSV import/export and verify Myanmar Unicode data preservation across UI and spreadsheet exchange.
+- [x] Run source type checking and tests without producing a deployable application build artifact.
+- [x] Create a GitHub-ready ZIP archive that excludes dependencies, build output, local logs, and secrets.
+- [x] Verify Myanmar Unicode CSV/XLSX import, UI/report display, and export round-trip without creating production records.
+- [ ] Run a live Unicode import-to-report acceptance check after an administrator supplies approved non-production test data.

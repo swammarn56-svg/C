@@ -3,6 +3,7 @@ export const VISS_TO_GRAMS = 1632.93;
 export type ItemType = "production" | "packaging" | "sales";
 export type DisplayUnit = "g" | "pcs";
 export type PurchaseUnit = "g" | "kg" | "viss" | "pcs";
+export type InventoryUnit = "g" | "pcs";
 
 export type OperationAmounts = {
   openingQtyGrams: number;
@@ -39,6 +40,24 @@ export function normalizePurchaseQuantity(
   }
 
   return roundQuantity(quantity * factor);
+}
+
+/**
+ * Normalises a purchase to the item's actual inventory base unit.  Weight-based
+ * items use grams; piece-based items remain pieces and are never converted.
+ */
+export function normalizePurchaseBaseQuantity(
+  quantity: number,
+  unit: PurchaseUnit,
+  baseUnit: InventoryUnit,
+) {
+  if (baseUnit === "pcs") {
+    if (unit !== "pcs") throw new Error("Piece-based inventory accepts pcs purchases only.");
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantity must be greater than zero.");
+    return roundQuantity(quantity);
+  }
+  if (unit === "pcs") throw new Error("Weight-based inventory cannot accept pcs purchases.");
+  return normalizePurchaseQuantity(quantity, unit, 1);
 }
 
 export function isItemEffectiveOnDate(

@@ -67,6 +67,8 @@ export const purchases = mysqlTable(
     quantityGrams: decimal("quantityGrams", { precision: 18, scale: 6 }).notNull(),
     totalCost: decimal("totalCost", { precision: 18, scale: 2 }).notNull(),
     unitCostPerGram: decimal("unitCostPerGram", { precision: 18, scale: 8 }).notNull(),
+    status: mysqlEnum("status", ["draft", "confirmed"]).notNull().default("confirmed"),
+    confirmedAt: timestamp("confirmedAt"),
     note: text("note"),
     createdBy: int("createdBy").references(() => users.id),
     createdAt: timestamp("createdAt").defaultNow().notNull(),

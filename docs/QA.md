@@ -29,3 +29,9 @@ An authenticated operational-user session was opened on **2026-08-15** without i
 The same live session also confirmed the **More** module displays Shop Management, multi-line Recipe Storage, XLSX template/export/import controls, restricted Admin Panel messaging, and Backup controls.  The **Purchase** module displayed separate Production (`g / kg / viss`) and Packaging (`pcs`) tabs, its internal-grams table column, and the intended empty state.  These checks were read-only and did not create any business transactions.
 
 The live **Production** ledger displayed the configured columns and formula guidance: `Used = Issued − Return − Damage` and `Closing = Opening + In + Return − Issued`, with purchase-driven `In` and Item Dashboard ordering described in the interface.  The **Sales** ledger displayed its shop selector, store-price dependency, and `Closing = Opening + Produce − Sell` guidance.  The session correctly prevented new sales when no shop exists, keeping the verification non-destructive.
+
+The source validation suite also performs a non-destructive Myanmar Unicode round-trip using `ပေါင်မုန့်`, `ရန်ကုန်ဆိုင်`, and `ချို`: it writes a UTF-8 BOM CSV and XLSX workbook with the same spreadsheet library used by the interface, reads both back, and confirms every text field is unchanged.  This verifies the import/export parsing path without inserting test records into the operational database.
+
+## Source-only validation
+
+After the final workflow changes, `pnpm check` completed successfully and `pnpm test` completed with **12 passing tests across 4 files**.  No deployment command or application production-build command was run for this source-delivery request.
