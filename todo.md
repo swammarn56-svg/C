@@ -88,3 +88,4 @@
 - [x] Add an Order Table listing only Sale items from Item Dashboard, with order quantity and note fields.
 - [x] Generate recipe-based Production/Packaging Issued quantities from saved Sale-item orders by business date.
 - [x] Preserve manual Issued edits over generated order quantities and add regression coverage for order generation and historical recipe behavior.
+- [x] Restore Netlify production Supabase Auth configuration; both production variables were verified through the Netlify site API, a fresh deployment completed, and the live login page rendered without the missing-configuration message.
