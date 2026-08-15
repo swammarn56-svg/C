@@ -73,3 +73,9 @@
 - [x] Preserve existing Opening overrides and reasons when editing other daily fields; add regression coverage for downstream recalculation.
 - [x] Bind the daily Sales import/export panel to the currently selected shop and verify exact date/shop scoping.
 - [ ] Perform a real browser-side PWA service-worker registration and installability check, beyond HTTP response checks.
+- [x] Add an administrator-only manual In override for Production and Packaging; Reason is optional, automatic purchase In remains the default, and later carryforward balances recalculate.
+- [x] Add a visible Reset to purchase auto In action for Production and Packaging and test that clearing the override restores purchase-derived In and downstream carryforward.
+- [x] Add integration-level regression coverage proving that clearing a saved manual In override restores later-day purchase-derived carryforward balances.
+- [x] Re-run and record the production build after the final reset-to-auto-In changes.
+- [x] Add an integration-style test that exercises the manual In save semantics, clears the override with null, and verifies later-day balances use purchase-derived In.
+- [x] Add a real operation save-path integration test covering manual In override, null reset, and later-day persisted carryforward, then rerun the test suite.

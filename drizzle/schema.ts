@@ -82,6 +82,7 @@ export const operations = pgTable("operations", {
   issuedQtyGrams: decimal("issuedQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   returnQtyGrams: decimal("returnQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
   damageQtyGrams: decimal("damageQtyGrams", { precision: 18, scale: 6 }).notNull().default("0"),
+  inOverrideQtyGrams: decimal("inOverrideQtyGrams", { precision: 18, scale: 6 }),
   openingOverrideQtyGrams: decimal("openingOverrideQtyGrams", { precision: 18, scale: 6 }),
   openingReason: text("openingReason"),
   note: text("note"),

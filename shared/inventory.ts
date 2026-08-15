@@ -68,6 +68,10 @@ export function isItemEffectiveOnDate(
   return businessDate >= effectiveFrom && (!inactiveFrom || businessDate < inactiveFrom);
 }
 
+export function resolveOperationIn(purchaseInQtyGrams: number, inOverrideQtyGrams?: number | null) {
+  return inOverrideQtyGrams === null || inOverrideQtyGrams === undefined ? purchaseInQtyGrams : inOverrideQtyGrams;
+}
+
 export function calculateOperationBalance(amounts: OperationAmounts) {
   const usedQtyGrams = roundQuantity(
     amounts.issuedQtyGrams - amounts.returnQtyGrams - amounts.damageQtyGrams,

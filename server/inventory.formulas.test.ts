@@ -3,6 +3,7 @@ import {
   VISS_TO_GRAMS,
   calculateMonthlyAverageCost,
   calculateOperationBalance,
+  resolveOperationIn,
   calculateSalesClosing,
   isItemEffectiveOnDate,
   normalizePurchaseQuantity,
@@ -36,6 +37,31 @@ describe("daily ledger formulas", () => {
 
   it("calculates the Sales closing balance", () => {
     expect(calculateSalesClosing(100, 80, 35)).toBe(145);
+  });
+
+  it("restores purchase-derived In after a manual override is cleared", () => {
+    const purchaseIn = 500;
+    const manualIn = 800;
+    const manualDay = calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: manualIn, issuedQtyGrams: 100, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const resetDay = calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: purchaseIn, issuedQtyGrams: 100, returnQtyGrams: 0, damageQtyGrams: 0 });
+    expect(manualDay.closingQtyGrams).toBe(700);
+    expect(resetDay.closingQtyGrams).toBe(400);
+  });
+
+  it("clearing a saved manual In override restores later-day carryforward", () => {
+    const purchaseInByDay = { day12: 500, day13: 0, day14: 0 };
+    const manualInByDay = { day12: 800, day13: null, day14: null as number | null };
+    const effectiveIn = (day: keyof typeof purchaseInByDay) => resolveOperationIn(purchaseInByDay[day], manualInByDay[day]);
+    const day12AfterReset = calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: effectiveIn("day12"), issuedQtyGrams: 100, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const day13AfterReset = calculateOperationBalance({ openingQtyGrams: day12AfterReset.closingQtyGrams, inQtyGrams: effectiveIn("day13"), issuedQtyGrams: 20, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const day14AfterReset = calculateOperationBalance({ openingQtyGrams: day13AfterReset.closingQtyGrams, inQtyGrams: effectiveIn("day14"), issuedQtyGrams: 10, returnQtyGrams: 0, damageQtyGrams: 0 });
+    manualInByDay.day12 = null;
+    const resetDay12 = calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: effectiveIn("day12"), issuedQtyGrams: 100, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const resetDay13 = calculateOperationBalance({ openingQtyGrams: resetDay12.closingQtyGrams, inQtyGrams: effectiveIn("day13"), issuedQtyGrams: 20, returnQtyGrams: 0, damageQtyGrams: 0 });
+    const resetDay14 = calculateOperationBalance({ openingQtyGrams: resetDay13.closingQtyGrams, inQtyGrams: effectiveIn("day14"), issuedQtyGrams: 10, returnQtyGrams: 0, damageQtyGrams: 0 });
+    expect(day14AfterReset.closingQtyGrams).toBe(670);
+    expect(resetDay12.closingQtyGrams).toBe(400);
+    expect(resetDay14.closingQtyGrams).toBe(370);
   });
 
   it("carries an earlier corrected Closing into later Openings", () => {

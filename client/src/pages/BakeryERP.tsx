@@ -209,21 +209,23 @@ function PurchasesPage({ date }: { date: string }) {
   </>;
 }
 
-function OperationRow({ row, type, isLocked }: { row: any; type: OperationType; isLocked: boolean }) {
+function OperationRow({ row, type, isLocked, isAdmin }: { row: any; type: OperationType; isLocked: boolean; isAdmin: boolean }) {
   const utils = trpc.useUtils();
   const save = trpc.inventory.operations.save.useMutation({ onSuccess: () => utils.inventory.invalidate() });
-  const [values, setValues] = useState({ opening: row.openingQtyGrams, reason: row.openingReason, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note });
-  useEffect(() => setValues({ opening: row.openingQtyGrams, reason: row.openingReason, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note }), [row.openingQtyGrams, row.openingReason, row.issuedQtyGrams, row.returnQtyGrams, row.damageQtyGrams, row.note]);
+  const [resetIn, setResetIn] = useState(false);
+  const [values, setValues] = useState({ opening: row.openingQtyGrams, reason: row.openingReason, inQty: row.inQtyGrams, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note });
+  useEffect(() => { setResetIn(false); setValues({ opening: row.openingQtyGrams, reason: row.openingReason, inQty: row.inQtyGrams, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note }); }, [row.openingQtyGrams, row.openingReason, row.inQtyGrams, row.issuedQtyGrams, row.returnQtyGrams, row.damageQtyGrams, row.note]);
   const used = asNumber(values.issued) - asNumber(values.returned) - asNumber(values.damage);
-  const closing = asNumber(values.opening) + row.inQtyGrams + asNumber(values.returned) - asNumber(values.issued);
+  const inChanged = String(values.inQty) !== String(row.inQtyGrams);
+  const closing = asNumber(values.opening) + asNumber(values.inQty) + asNumber(values.returned) - asNumber(values.issued);
   const openingChanged = String(values.opening) !== String(row.openingQtyGrams);
   const field = (key: "issued" | "returned" | "damage") => <input disabled={isLocked} min="0" step="0.001" type="number" value={values[key]} onChange={event => setValues({ ...values, [key]: event.target.value })} />;
-  return <tr><td><strong>{row.item.name}</strong><small>{row.item.displayUnit}</small></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => setValues({ ...values, opening: event.target.value })} />{openingChanged && <input required disabled={isLocked} placeholder="Reason for Opening edit" value={values.reason} onChange={event => setValues({ ...values, reason: event.target.value })} />}</td><td>{unitLabel(row.item, row.inQtyGrams)}</td><td>{field("issued")}</td><td>{field("returned")}</td><td>{field("damage")}</td><td>{unitLabel(row.item, used)}</td><td>{unitLabel(row.item, closing)}</td><td><input disabled={isLocked} value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={isLocked || save.isPending || (openingChanged && !values.reason.trim())} onClick={() => save.mutate({ date: row.date, itemId: row.item.id, type, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams ?? null), openingReason: openingChanged ? values.reason.trim() : (row.openingReason || null), issuedQtyGrams: Math.max(0, asNumber(values.issued)), returnQtyGrams: Math.max(0, asNumber(values.returned)), damageQtyGrams: Math.max(0, asNumber(values.damage)), note: values.note || null })}>Save</button></td></tr>;
+  return <tr><td><strong>{row.item.name}</strong><small>{row.item.displayUnit}</small></td><td><input disabled={isLocked} min="0" step="0.001" type="number" value={values.opening} onChange={event => setValues({ ...values, opening: event.target.value })} />{openingChanged && <input required disabled={isLocked} placeholder="Reason for Opening edit" value={values.reason} onChange={event => setValues({ ...values, reason: event.target.value })} />}</td><td>{isAdmin ? <><input disabled={isLocked} min="0" step="0.001" type="number" value={values.inQty} onChange={event => { setResetIn(false); setValues({ ...values, inQty: event.target.value }); }} />{row.inOverrideQtyGrams !== null && row.inOverrideQtyGrams !== undefined ? <button type="button" disabled={isLocked} onClick={() => { setResetIn(true); setValues({ ...values, inQty: row.purchaseInQtyGrams }); }}>Reset to purchase auto In</button> : <small>Auto from purchase</small>}</> : unitLabel(row.item, row.inQtyGrams)}</td><td>{field("issued")}</td><td>{field("returned")}</td><td>{field("damage")}</td><td>{unitLabel(row.item, used)}</td><td>{unitLabel(row.item, closing)}</td><td><input disabled={isLocked} value={values.note} onChange={event => setValues({ ...values, note: event.target.value })} /></td><td><button disabled={isLocked || save.isPending || (openingChanged && !values.reason.trim())} onClick={() => save.mutate({ date: row.date, itemId: row.item.id, type, inOverrideQtyGrams: isAdmin ? (resetIn ? null : inChanged ? Math.max(0, asNumber(values.inQty)) : (row.inOverrideQtyGrams ?? null)) : undefined, openingOverrideQtyGrams: openingChanged ? Math.max(0, asNumber(values.opening)) : (row.openingOverrideQtyGrams ?? null), openingReason: openingChanged ? values.reason.trim() : (row.openingReason || null), issuedQtyGrams: Math.max(0, asNumber(values.issued)), returnQtyGrams: Math.max(0, asNumber(values.returned)), damageQtyGrams: Math.max(0, asNumber(values.damage)), note: values.note || null })}>Save</button></td></tr>;
 }
 
 function OperationsPage({ date, type }: { date: string; type: OperationType }) {
-  const query = trpc.inventory.operations.daily.useQuery({ date, type });
   const { user } = useAuth();
+  const query = trpc.inventory.operations.daily.useQuery({ date, type });
   const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: type });
   const utils = trpc.useUtils();
   const lock = trpc.inventory.daily.lock.useMutation({ onSuccess: () => utils.inventory.invalidate() });
@@ -234,7 +236,7 @@ function OperationsPage({ date, type }: { date: string; type: OperationType }) {
   return <><PageHeader title={`${label} daily ledger`} subtitle="Used = Issued − Return − Damage. Closing carries forward as the next day Opening." action={action} />
     <Card className="formula-note"><strong>In</strong> is automatically sourced from purchases entered for this date. Opening edits require a reason and recalculate later days. {isLocked && <strong> This day is locked.</strong>}</Card>
     <SpreadsheetPanel date={date} defaultKind={type} />
-    <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening / Reason</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th></th></tr></thead><tbody>{(query.data ?? []).map(row => <OperationRow key={row.item.id} row={row} type={type} isLocked={isLocked} />)}{!query.data?.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
+    <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening / Reason</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th></th></tr></thead><tbody>{(query.data ?? []).map(row => <OperationRow key={row.item.id} row={row} type={type} isLocked={isLocked} isAdmin={user?.role === "admin"} />)}{!query.data?.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
   </>;
 }
 

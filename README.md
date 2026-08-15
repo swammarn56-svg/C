@@ -41,6 +41,18 @@ node scripts/apply-supabase-migration.mjs
 
 The migration creates the ERP tables, enum types, foreign keys, indexes, updated-at triggers, and row-level security. The server uses the Supabase service-role credential and enforces application roles in tRPC; the service-role credential is never sent to the browser.
 
+## Supabase email/password login
+
+The live application does not use Manus OAuth. Login is handled by Supabase Auth with the browser variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`; the server verifies bearer tokens with the server-only Supabase service-role key and maps the Supabase user ID into the ERP users table.
+
+## Progressive Web App (PWA)
+
+On a supported mobile browser, open the Netlify site and choose **Add to Home screen** or **Install app** from the browser menu. The PWA caches the application shell and static assets for faster reopening and limited offline shell access. Inventory, reports, authentication, and Supabase data operations still require an internet connection.
+
+## Netlify deployment
+
+The repository includes `netlify.toml` and a Netlify Function at `netlify/functions/api.ts`. Use build command `pnpm build`, publish directory `dist/public`, and functions directory `netlify/functions`. Configure the Supabase and OAuth-free environment variables in Netlify Site settings before deploying.
+
 ## Spreadsheet exchange
 
 Purchase, Production, Packaging, and Sales tables support XLSX and CSV templates. CSV is generated with a UTF-8 BOM and the import path removes that BOM before parsing; this protects Myanmar Unicode values such as `ပေါင်မုန့်`, `ရန်ကုန်ဆိုင်`, and `ချို`.

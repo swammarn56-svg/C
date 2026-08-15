@@ -17,6 +17,7 @@ import {
 import {
   calculateMonthlyAverageCost,
   calculateOperationBalance,
+  resolveOperationIn,
   calculateSalesClosing,
   displayQuantity,
   isItemEffectiveOnDate,
@@ -106,18 +107,18 @@ async function operationLedgerForDate(date: string, type: "production" | "packag
       if (saved?.openingOverrideQtyGrams !== null && saved?.openingOverrideQtyGrams !== undefined) opening = number(saved.openingOverrideQtyGrams);
       const amounts = {
         openingQtyGrams: opening,
-        inQtyGrams: purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0,
+        inQtyGrams: resolveOperationIn(purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0, saved?.inOverrideQtyGrams === null || saved?.inOverrideQtyGrams === undefined ? null : number(saved.inOverrideQtyGrams)),
         issuedQtyGrams: number(saved?.issuedQtyGrams),
         returnQtyGrams: number(saved?.returnQtyGrams),
         damageQtyGrams: number(saved?.damageQtyGrams),
       };
       const calculated = calculateOperationBalance(amounts);
       if (currentDate === date) {
-        result = { item: publicItem(item), operationId: saved?.id ?? null, date, openingOverrideQtyGrams: saved?.openingOverrideQtyGrams ?? null, openingReason: saved?.openingReason ?? "", note: saved?.note ?? "", ...amounts, ...calculated };
+        result = { item: publicItem(item), operationId: saved?.id ?? null, date, inOverrideQtyGrams: saved?.inOverrideQtyGrams ?? null, purchaseInQtyGrams: purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0, openingOverrideQtyGrams: saved?.openingOverrideQtyGrams ?? null, openingReason: saved?.openingReason ?? "", note: saved?.note ?? "", ...amounts, ...calculated };
       }
       opening = calculated.closingQtyGrams;
     }
-    return result ?? { item: publicItem(item), operationId: null, date, openingOverrideQtyGrams: null, openingReason: "", note: "", openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0, ...calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0 }) };
+    return result ?? { item: publicItem(item), operationId: null, date, inOverrideQtyGrams: null, purchaseInQtyGrams: 0, openingOverrideQtyGrams: null, openingReason: "", note: "", openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0, ...calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0 }) };
   });
 }
 
@@ -330,6 +331,7 @@ export const inventoryRouter = router({
           issuedQtyGrams: nonNegative,
           returnQtyGrams: nonNegative,
           damageQtyGrams: nonNegative,
+          inOverrideQtyGrams: nonNegative.optional().nullable(),
           openingOverrideQtyGrams: nonNegative.optional().nullable(),
           openingReason: z.string().trim().max(500).optional().nullable(),
           note: z.string().trim().max(2000).optional().nullable(),
@@ -338,12 +340,14 @@ export const inventoryRouter = router({
       .mutation(async ({ input, ctx }) => {
         const db = await requireDb();
         await assertDayOpen(input.date, input.type);
+        if (input.inOverrideQtyGrams !== undefined && ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Only administrators can manually override In." });
         if (input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined && !input.openingReason?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Opening edit reason is required." });
         const item = await db.select().from(items).where(eq(items.id, input.itemId)).limit(1);
         if (!item[0] || item[0].itemType !== input.type) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "The item does not belong to this ledger." });
         }
         ensureEffective(item[0], input.date);
+        const existingOperation = await db.select().from(operations).where(and(eq(operations.operationDate, dbDate(input.date)), eq(operations.itemId, input.itemId), eq(operations.operationType, input.type))).limit(1);
         await db
           .insert(operations)
           .values({
@@ -353,6 +357,7 @@ export const inventoryRouter = router({
             issuedQtyGrams: input.issuedQtyGrams.toString(),
             returnQtyGrams: input.returnQtyGrams.toString(),
             damageQtyGrams: input.damageQtyGrams.toString(),
+            inOverrideQtyGrams: input.inOverrideQtyGrams === undefined ? existingOperation[0]?.inOverrideQtyGrams ?? null : input.inOverrideQtyGrams === null ? null : input.inOverrideQtyGrams.toString(),
             openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(),
             openingReason: input.openingReason?.trim() || null,
             note: input.note || null,
@@ -364,6 +369,7 @@ export const inventoryRouter = router({
               issuedQtyGrams: input.issuedQtyGrams.toString(),
               returnQtyGrams: input.returnQtyGrams.toString(),
               damageQtyGrams: input.damageQtyGrams.toString(),
+              inOverrideQtyGrams: input.inOverrideQtyGrams === undefined ? existingOperation[0]?.inOverrideQtyGrams ?? null : input.inOverrideQtyGrams === null ? null : input.inOverrideQtyGrams.toString(),
               openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(),
               openingReason: input.openingReason?.trim() || null,
               note: input.note || null,
@@ -371,7 +377,7 @@ export const inventoryRouter = router({
             },
           });
         const saved = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.operationDate, dbDate(input.date)), eq(operations.itemId, input.itemId), eq(operations.operationType, input.type))).limit(1);
-        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "operation_save", "operations", saved[0]?.id ?? null, input.date, { itemId: input.itemId, type: input.type, reason: input.openingReason ?? null });
+        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "operation_save", "operations", saved[0]?.id ?? null, input.date, { itemId: input.itemId, type: input.type, inOverrideQtyGrams: input.inOverrideQtyGrams ?? null, reason: input.openingReason ?? null });
         return { success: true };
       }),
   }),
