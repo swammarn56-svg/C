@@ -206,8 +206,8 @@ function PurchasesPage({ date }: { date: string }) {
   const confirm = trpc.inventory.purchases.confirm.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const cancel = trpc.inventory.purchases.cancel.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const items = (allItems.data ?? []).filter(item => item.itemType === type);
-  const rows = (purchaseQuery.data ?? []).filter(row => row.item.itemType === type);
-  return <><PageHeader title="Purchase" subtitle="Confirmed purchase quantities feed the corresponding daily In balance." action={<button className="primary-button" onClick={() => setAdd(true)}><Plus size={16} /> Add purchase</button>} />
+  const rows = (purchaseQuery.data ?? []).filter(row => row.item.itemType === type && String(row.purchaseDate).slice(0, 10) === date);
+  return <><PageHeader title="Purchase" subtitle={`Purchases for ${date} · confirmed quantities feed the corresponding daily In balance.`} action={<button className="primary-button" onClick={() => setAdd(true)}><Plus size={16} /> Add purchase</button>} />
     <div className="section-tabs"><button className={type === "production" ? "active" : ""} onClick={() => setType("production")}>Production (g / kg / viss)</button><button className={type === "packaging" ? "active" : ""} onClick={() => setType("packaging")}>Packaging (pcs)</button></div>
     <Card className="table-card"><table><thead><tr><th>Date</th><th>Name</th><th>Qty</th><th>Purchase unit</th><th>Base qty</th><th>Unit price</th><th>Total price</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>{rows.map(row => <tr key={row.id}><td>{String(row.purchaseDate).slice(0, 10)}</td><td><strong>{row.item.name}</strong></td><td>{qty(row.inputQuantity)}</td><td>{row.inputUnit}</td><td>{qty(row.baseQuantity)} {row.baseUnit}</td><td>{money(row.unitCostPerGram)} / {row.baseUnit}</td><td>{money(row.totalCost)}</td><td><span className={row.status === "confirmed" ? "status-good" : row.status === "cancelled" ? "status-muted" : "status-muted"}>{row.status}</span></td><td>{row.note || "—"}</td><td className="row-actions">{row.status === "draft" && <button onClick={() => confirm.mutate({ id: row.id })} disabled={confirm.isPending}>Confirm</button>}{row.status === "confirmed" && <button className="danger-button" onClick={() => { const reason = window.prompt("Cancellation reason (optional)") ?? null; if (reason !== null) cancel.mutate({ id: row.id, reason }); }} disabled={cancel.isPending}>Cancel purchase</button>}</td></tr>)}{!rows.length && <tr><td colSpan={10}><EmptyState>No {type} purchases recorded.</EmptyState></td></tr>}</tbody></table></Card>
     {add && <PurchaseForm itemType={type} items={items} onClose={() => setAdd(false)} onDone={() => setAdd(false)} />}
@@ -215,9 +215,8 @@ function PurchasesPage({ date }: { date: string }) {
 }
 
 function OperationRow({ row, type, isLocked, isAdmin }: { row: any; type: OperationType; isLocked: boolean; isAdmin: boolean }) {
-  const utils = trpc.useUtils();
   const [saveState, setSaveState] = useState<"saved" | "pending" | "saving" | "error">("saved");
-  const save = trpc.inventory.operations.save.useMutation({ onSuccess: () => { setSaveState("saved"); utils.inventory.invalidate(); }, onError: () => setSaveState("error") });
+  const save = trpc.inventory.operations.save.useMutation({ onSuccess: () => setSaveState("saved"), onError: () => setSaveState("error") });
   const [values, setValues] = useState({ opening: row.openingQtyGrams, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note });
   const requestKey = useRef(0);
   useEffect(() => { setSaveState("saved"); setValues({ opening: row.openingQtyGrams, issued: row.issuedQtyGrams, returned: row.returnQtyGrams, damage: row.damageQtyGrams, note: row.note }); }, [row.date, row.item.id, row.openingQtyGrams, row.inQtyGrams, row.issuedQtyGrams, row.returnQtyGrams, row.damageQtyGrams, row.note]);
@@ -233,7 +232,7 @@ function OperationRow({ row, type, isLocked, isAdmin }: { row: any; type: Operat
     const timer = window.setTimeout(() => {
       const key = ++requestKey.current;
       setSaveState("saving");
-      save.mutate(payload, { onSuccess: () => { if (key === requestKey.current) { setSaveState("saved"); utils.inventory.invalidate(); } }, onError: () => { if (key === requestKey.current) setSaveState("error"); } });
+      save.mutate(payload, { onSuccess: () => { if (key === requestKey.current) setSaveState("saved"); }, onError: () => { if (key === requestKey.current) setSaveState("error"); } });
     }, 650);
     return () => window.clearTimeout(timer);
   }, [hasChanges, isLocked, payloadSignature]);
@@ -245,26 +244,27 @@ function OperationRow({ row, type, isLocked, isAdmin }: { row: any; type: Operat
 
 function OperationsPage({ date, type }: { date: string; type: OperationType }) {
   const { user } = useAuth();
-  const query = trpc.inventory.operations.daily.useQuery({ date, type });
-  const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: type });
+  const query = trpc.inventory.operations.daily.useQuery({ date, type }, { placeholderData: previous => previous });
+  const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: type }, { placeholderData: previous => previous });
+  const [cachedRows, setCachedRows] = useState<any[]>([]);
+  useEffect(() => { if (query.data) setCachedRows(query.data); }, [query.data]);
   const utils = trpc.useUtils();
   const lock = trpc.inventory.daily.lock.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const label = type[0].toUpperCase() + type.slice(1);
   const isLocked = Boolean(status.data?.locked);
-  const rows = query.isFetching ? [] : query.data ?? [];
+  const rows = query.data ?? cachedRows;
   const negativeCount = rows.filter(row => asNumber(row.closingQtyGrams) < 0).length;
   const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: type })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: type })}>Lock day</button>}</span> : undefined;
   return <><PageHeader title={`${label} daily ledger`} action={action} />
     {(negativeCount > 0 || isLocked) && <Card className="ledger-status">{negativeCount > 0 && <strong className="warning-text">{negativeCount} item balance(s) are below zero.</strong>} {isLocked && <strong>This day is locked.</strong>}</Card>}
-    <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th>Status</th></tr></thead><tbody>{query.isLoading || query.isFetching ? <tr><td colSpan={10}><EmptyState>Loading {label.toLowerCase()} rows for {date}…</EmptyState></td></tr> : rows.map(row => <OperationRow key={`${date}-${row.item.id}`} row={row} type={type} isLocked={isLocked} isAdmin={user?.role === "admin"} />)}{!query.isLoading && !query.isFetching && !rows.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
+    <Card className="table-card">{query.isFetching && <div className="ledger-refreshing" aria-live="polite">Updating {label.toLowerCase()} date…</div>}<table><thead><tr><th>Name</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th>Status</th></tr></thead><tbody>{query.isLoading && !query.data ? <tr><td colSpan={10}><EmptyState>Loading {label.toLowerCase()} rows for {date}…</EmptyState></td></tr> : rows.map(row => <OperationRow key={`${row.date}-${row.item.id}`} row={row} type={type} isLocked={isLocked} isAdmin={user?.role === "admin"} />)}{!query.isLoading && !rows.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
   </>;
 }
 
 function SalesRow({ row, shopId, isLocked }: { row: any; shopId: number; isLocked: boolean }) {
-  const utils = trpc.useUtils();
   const [saveState, setSaveState] = useState<"saved" | "pending" | "saving" | "error">("saved");
-  const save = trpc.inventory.sales.save.useMutation({ onSuccess: () => { setSaveState("saved"); utils.inventory.invalidate(); }, onError: () => setSaveState("error") });
+  const save = trpc.inventory.sales.save.useMutation({ onSuccess: () => setSaveState("saved"), onError: () => setSaveState("error") });
   const [values, setValues] = useState({ opening: row.openingQtyGrams, produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note });
   const requestKey = useRef(0);
   useEffect(() => { setSaveState("saved"); setValues({ opening: row.openingQtyGrams, produce: row.produceQtyGrams, sell: row.sellQtyGrams, note: row.note }); }, [row.date, row.item.id, row.openingQtyGrams, row.produceQtyGrams, row.sellQtyGrams, row.note]);
@@ -279,7 +279,7 @@ function SalesRow({ row, shopId, isLocked }: { row: any; shopId: number; isLocke
     const timer = window.setTimeout(() => {
       const key = ++requestKey.current;
       setSaveState("saving");
-      save.mutate(payload, { onSuccess: () => { if (key === requestKey.current) { setSaveState("saved"); utils.inventory.invalidate(); } }, onError: () => { if (key === requestKey.current) setSaveState("error"); } });
+      save.mutate(payload, { onSuccess: () => { if (key === requestKey.current) setSaveState("saved"); }, onError: () => { if (key === requestKey.current) setSaveState("error"); } });
     }, 650);
     return () => window.clearTimeout(timer);
   }, [hasChanges, isLocked, payloadSignature]);
@@ -292,8 +292,10 @@ function SalesPage({ date }: { date: string }) {
   const { user } = useAuth();
   const [shopId, setShopId] = useState<number | null>(null);
   useEffect(() => { if (shopId === null && shops.data?.[0]) setShopId(shops.data[0].id); }, [shops.data, shopId]);
-  const daily = trpc.inventory.sales.daily.useQuery({ date, shopId: shopId ?? 1 }, { enabled: Boolean(shopId) });
-  const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: "sales" });
+  const daily = trpc.inventory.sales.daily.useQuery({ date, shopId: shopId ?? 1 }, { enabled: Boolean(shopId), placeholderData: previous => previous });
+  const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: "sales" }, { placeholderData: previous => previous });
+  const [cachedRows, setCachedRows] = useState<any[]>([]);
+  useEffect(() => { if (daily.data) setCachedRows(daily.data); }, [daily.data]);
   const utils = trpc.useUtils();
   const lock = trpc.inventory.daily.lock.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
@@ -301,7 +303,7 @@ function SalesPage({ date }: { date: string }) {
   const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: "sales" })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: "sales" })}>Lock day</button>}</span> : undefined;
   return <><PageHeader title="Sale daily ledger" action={action} />
     <Card className="toolbar-card"><label>Shop<select value={shopId ?? ""} onChange={event => setShopId(Number(event.target.value))}><option value="">Select a shop</option>{(shops.data ?? []).filter(shop => shop.active).map(shop => <option value={shop.id} key={shop.id}>{shop.name}</option>)}</select></label>{isLocked && <strong>This day is locked.</strong>}</Card>
-    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <Card className="table-card"><table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th>Status</th></tr></thead><tbody>{daily.isLoading || daily.isFetching ? <tr><td colSpan={9}><EmptyState>Loading sales rows for {date}…</EmptyState></td></tr> : (daily.data ?? []).map(row => <SalesRow key={`${date}-${shopId}-${row.item.id}`} row={row} shopId={shopId} isLocked={isLocked} />)}{!daily.isLoading && !daily.isFetching && !daily.data?.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card>}
+    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <Card className="table-card">{daily.isFetching && <div className="ledger-refreshing" aria-live="polite">Updating sales date…</div>}<table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th>Status</th></tr></thead><tbody>{daily.isLoading && !daily.data ? <tr><td colSpan={9}><EmptyState>Loading sales rows for {date}…</EmptyState></td></tr> : (daily.data ?? cachedRows).map(row => <SalesRow key={`${row.date}-${shopId}-${row.item.id}`} row={row} shopId={shopId} isLocked={isLocked} />)}{!daily.isLoading && !daily.data?.length && !cachedRows.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card>}
   </>;
 }
 

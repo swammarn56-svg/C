@@ -131,3 +131,7 @@
 - [x] Create and present three mobile-friendly daily-ledger table design options, then implement only the user-selected design.
 - [x] Keep the existing table design and make only the Name column sticky during horizontal scrolling, with no changes to the current ledger workflow.
 - [x] Reapply the exact Production and Packaging item sequences from the supplied original August CSV files to current item sort-order values without modifying ledger quantities or Purchase data.
+- [ ] Prevent each row edit from reloading the whole ledger; keep edited values locally visible and show immediate non-blocking save status.
+- [ ] Make date changes display the selected date immediately with stale-request protection and replace the table data when the new response arrives.
+- [ ] Validate the optimized mobile flow, run tests/build, push the correction to GitHub main, and verify the Netlify deployment.
+- [ ] Filter Purchase records by the selected Business date so only that date’s purchases are shown, while preserving the existing Production/Packaging type tabs and cancellation workflow.

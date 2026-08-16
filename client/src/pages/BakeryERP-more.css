@@ -68,3 +68,4 @@ code { display: inline-block; max-width: 300px; overflow-wrap: anywhere; color: 
 }
 .table-card table th:first-child { z-index: 3; }
 .negative-stock-row td:first-child { background: #fff7ed; }
+.ledger-refreshing { padding: 5px 10px; color: #64748b; font-size: 11px; text-align: right; }
