@@ -137,3 +137,6 @@
 - [x] Filter Purchase records by the selected Business date so only that date’s purchases are shown, while preserving the existing Production/Packaging type tabs and cancellation workflow.
 - [x] Fix the mobile Production/Packaging/Sales ledger query stuck on Loading for a selected date; add bounded timeout, visible error state, and retry without losing already loaded rows.
 - [x] Run regression tests/build, push the mobile Loading correction to GitHub main, and verify the Netlify mobile workflow with the selected date.
+- [x] Restore editable manual In fields in Production and Packaging while keeping confirmed Purchase-derived In as the default and preserving cancel/carryforward behavior.
+- [x] Diagnose and fix the mobile Production/Packaging/Sales query that remains stuck on Loading; verify the actual API/session response, not only the UI timeout.
+- [x] Run tests/build, verify manual In and mobile loading, push the correction to GitHub main, and redeploy/verify through Netlify.

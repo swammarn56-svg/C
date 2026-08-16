@@ -86,10 +86,16 @@ describe.skipIf(!process.env.SUPABASE_DB_URL)("inventory operation save integrat
     const purchaseNextDayRows = await caller.inventory.operations.daily({ date: "2099-01-02", type: "production" });
     const purchaseToday = purchaseTodayRows.find(row => row.item.id === item.id)!;
     const purchaseNextDay = purchaseNextDayRows.find(row => row.item.id === item.id)!;
-    expect(purchaseToday.inOverrideQtyGrams).toBeNull();
-    expect(purchaseToday.inQtyGrams).toBe(500);
-    expect(purchaseToday.closingQtyGrams).toBe(500);
-    expect(purchaseNextDay.openingQtyGrams).toBe(500);
+    expect(purchaseToday.inOverrideQtyGrams).toBe("800.000000");
+    expect(purchaseToday.inQtyGrams).toBe(800);
+    expect(purchaseToday.closingQtyGrams).toBe(800);
+    expect(purchaseNextDay.openingQtyGrams).toBe(800);
+
+    await caller.inventory.operations.save({ ...base, date: "2099-01-01", inOverrideQtyGrams: null });
+    const autoTodayRows = await caller.inventory.operations.daily({ date: "2099-01-01", type: "production" });
+    const autoToday = autoTodayRows.find(row => row.item.id === item.id)!;
+    expect(autoToday.inOverrideQtyGrams).toBeNull();
+    expect(autoToday.inQtyGrams).toBe(500);
 
     await caller.inventory.purchases.cancel({ id: purchase.id, reason: "Regression test cancellation" });
     const cancelledTodayRows = await caller.inventory.operations.daily({ date: "2099-01-01", type: "production" });

@@ -129,20 +129,22 @@ async function operationLedgerForDate(date: string, type: "production" | "packag
     for (const currentDate of dates) {
       const saved = operationByKey.get(`${item.id}|${currentDate}`);
       if (saved?.openingOverrideQtyGrams !== null && saved?.openingOverrideQtyGrams !== undefined) opening = number(saved.openingOverrideQtyGrams);
+      const purchaseInQtyGrams = purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0;
+      const inQtyGrams = saved?.inOverrideQtyGrams !== null && saved?.inOverrideQtyGrams !== undefined ? number(saved.inOverrideQtyGrams) : purchaseInQtyGrams;
       const amounts = {
         openingQtyGrams: opening,
-        inQtyGrams: purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0,
+        inQtyGrams,
         issuedQtyGrams: saved?.issuedOverrideQtyGrams !== null && saved?.issuedOverrideQtyGrams !== undefined ? number(saved.issuedOverrideQtyGrams) : (generatedByKey.get(`${currentDate}|${item.id}`) ?? number(saved?.issuedQtyGrams)),
         returnQtyGrams: number(saved?.returnQtyGrams),
         damageQtyGrams: number(saved?.damageQtyGrams),
       };
       const calculated = calculateOperationBalance(amounts);
       if (currentDate === date) {
-        result = { item: publicItem(item), operationId: saved?.id ?? null, date, issuedOverrideQtyGrams: saved?.issuedOverrideQtyGrams ?? null, inOverrideQtyGrams: null, purchaseInQtyGrams: purchaseByKey.get(`${item.id}|${currentDate}`) ?? 0, openingOverrideQtyGrams: saved?.openingOverrideQtyGrams ?? null, openingReason: saved?.openingReason ?? "", note: saved?.note ?? "", ...amounts, ...calculated };
+        result = { item: publicItem(item), operationId: saved?.id ?? null, date, issuedOverrideQtyGrams: saved?.issuedOverrideQtyGrams ?? null, inOverrideQtyGrams: saved?.inOverrideQtyGrams ?? null, purchaseInQtyGrams, openingOverrideQtyGrams: saved?.openingOverrideQtyGrams ?? null, openingReason: saved?.openingReason ?? "", note: saved?.note ?? "", ...amounts, ...calculated };
       }
       opening = calculated.closingQtyGrams;
     }
-    return result ?? { item: publicItem(item), operationId: null, date, inOverrideQtyGrams: null, purchaseInQtyGrams: 0, openingOverrideQtyGrams: null, openingReason: "", note: "", openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0, ...calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0 }) };
+      return result ?? { item: publicItem(item), operationId: null, date, inOverrideQtyGrams: null, purchaseInQtyGrams: 0, openingQtyGrams: 0, openingOverrideQtyGrams: null, openingReason: "", note: "", inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0, ...calculateOperationBalance({ openingQtyGrams: 0, inQtyGrams: 0, issuedQtyGrams: 0, returnQtyGrams: 0, damageQtyGrams: 0 }) };
   });
 }
 
@@ -393,7 +395,7 @@ export const inventoryRouter = router({
             issuedOverrideQtyGrams: input.issuedOverrideQtyGrams === undefined ? existingOperation[0]?.issuedOverrideQtyGrams ?? null : input.issuedOverrideQtyGrams === null ? null : input.issuedOverrideQtyGrams.toString(),
             returnQtyGrams: input.returnQtyGrams.toString(),
             damageQtyGrams: input.damageQtyGrams.toString(),
-            inOverrideQtyGrams: null,
+            inOverrideQtyGrams: input.inOverrideQtyGrams === undefined ? existingOperation[0]?.inOverrideQtyGrams ?? null : input.inOverrideQtyGrams === null ? null : input.inOverrideQtyGrams.toString(),
             openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(),
             openingReason: input.openingReason?.trim() || null,
             note: input.note || null,
@@ -406,7 +408,7 @@ export const inventoryRouter = router({
               issuedOverrideQtyGrams: input.issuedOverrideQtyGrams === undefined ? existingOperation[0]?.issuedOverrideQtyGrams ?? null : input.issuedOverrideQtyGrams === null ? null : input.issuedOverrideQtyGrams.toString(),
               returnQtyGrams: input.returnQtyGrams.toString(),
               damageQtyGrams: input.damageQtyGrams.toString(),
-              inOverrideQtyGrams: null,
+              inOverrideQtyGrams: input.inOverrideQtyGrams === undefined ? existingOperation[0]?.inOverrideQtyGrams ?? null : input.inOverrideQtyGrams === null ? null : input.inOverrideQtyGrams.toString(),
               openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(),
               openingReason: input.openingReason?.trim() || null,
               note: input.note || null,
