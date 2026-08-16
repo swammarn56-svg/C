@@ -247,7 +247,13 @@ function OperationsPage({ date, type }: { date: string; type: OperationType }) {
   const query = trpc.inventory.operations.daily.useQuery({ date, type }, { placeholderData: previous => previous });
   const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: type }, { placeholderData: previous => previous });
   const [cachedRows, setCachedRows] = useState<any[]>([]);
-  useEffect(() => { if (query.data) setCachedRows(query.data); }, [query.data]);
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  useEffect(() => { if (query.data) { setCachedRows(query.data); setLoadTimedOut(false); } }, [query.data]);
+  useEffect(() => {
+    setLoadTimedOut(false);
+    const timer = window.setTimeout(() => { if (query.isLoading && !query.data && !cachedRows.length) setLoadTimedOut(true); }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [date, type]);
   const utils = trpc.useUtils();
   const lock = trpc.inventory.daily.lock.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
@@ -258,7 +264,7 @@ function OperationsPage({ date, type }: { date: string; type: OperationType }) {
   const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: type })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: type })}>Lock day</button>}</span> : undefined;
   return <><PageHeader title={`${label} daily ledger`} action={action} />
     {(negativeCount > 0 || isLocked) && <Card className="ledger-status">{negativeCount > 0 && <strong className="warning-text">{negativeCount} item balance(s) are below zero.</strong>} {isLocked && <strong>This day is locked.</strong>}</Card>}
-    <Card className="table-card">{query.isFetching && <div className="ledger-refreshing" aria-live="polite">Updating {label.toLowerCase()} date…</div>}<table><thead><tr><th>Name</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th>Status</th></tr></thead><tbody>{query.isLoading && !query.data ? <tr><td colSpan={10}><EmptyState>Loading {label.toLowerCase()} rows for {date}…</EmptyState></td></tr> : rows.map(row => <OperationRow key={`${row.date}-${row.item.id}`} row={row} type={type} isLocked={isLocked} isAdmin={user?.role === "admin"} />)}{!query.isLoading && !rows.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
+    <Card className="table-card">{query.isFetching && <div className="ledger-refreshing" aria-live="polite">Updating {label.toLowerCase()} date…</div>}<table><thead><tr><th>Name</th><th>Opening</th><th>In</th><th>Issued</th><th>Return</th><th>Damage</th><th>Used</th><th>Closing</th><th>Note</th><th>Status</th></tr></thead><tbody>{!rows.length && (query.isError || loadTimedOut) ? <tr><td colSpan={10}><EmptyState>{query.error?.message || `Could not load ${label.toLowerCase()} rows for ${date}.`} <button onClick={() => { setLoadTimedOut(false); query.refetch(); }}>Retry</button></EmptyState></td></tr> : query.isLoading && !query.data && !rows.length ? <tr><td colSpan={10}><EmptyState>Loading {label.toLowerCase()} rows for {date}…</EmptyState></td></tr> : rows.map(row => <OperationRow key={`${row.date}-${row.item.id}`} row={row} type={type} isLocked={isLocked} isAdmin={user?.role === "admin"} />)}{!query.isLoading && !query.isError && !loadTimedOut && !rows.length && <tr><td colSpan={10}><EmptyState>No active {type} items on this date.</EmptyState></td></tr>}</tbody></table></Card>
   </>;
 }
 
@@ -295,7 +301,13 @@ function SalesPage({ date }: { date: string }) {
   const daily = trpc.inventory.sales.daily.useQuery({ date, shopId: shopId ?? 1 }, { enabled: Boolean(shopId), placeholderData: previous => previous });
   const status = trpc.inventory.daily.status.useQuery({ date, ledgerType: "sales" }, { placeholderData: previous => previous });
   const [cachedRows, setCachedRows] = useState<any[]>([]);
-  useEffect(() => { if (daily.data) setCachedRows(daily.data); }, [daily.data]);
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  useEffect(() => { if (daily.data) { setCachedRows(daily.data); setLoadTimedOut(false); } }, [daily.data]);
+  useEffect(() => {
+    setLoadTimedOut(false);
+    const timer = window.setTimeout(() => { if (daily.isLoading && !daily.data && !cachedRows.length) setLoadTimedOut(true); }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [date, shopId]);
   const utils = trpc.useUtils();
   const lock = trpc.inventory.daily.lock.useMutation({ onSuccess: () => utils.inventory.invalidate() });
   const reopen = trpc.inventory.daily.reopen.useMutation({ onSuccess: () => utils.inventory.invalidate() });
@@ -303,7 +315,7 @@ function SalesPage({ date }: { date: string }) {
   const action = user?.role === "admin" ? <span className="header-actions">{isLocked ? <button onClick={() => reopen.mutate({ date, ledgerType: "sales" })}>Reopen day</button> : <button className="primary-button" onClick={() => lock.mutate({ date, ledgerType: "sales" })}>Lock day</button>}</span> : undefined;
   return <><PageHeader title="Sale daily ledger" action={action} />
     <Card className="toolbar-card"><label>Shop<select value={shopId ?? ""} onChange={event => setShopId(Number(event.target.value))}><option value="">Select a shop</option>{(shops.data ?? []).filter(shop => shop.active).map(shop => <option value={shop.id} key={shop.id}>{shop.name}</option>)}</select></label>{isLocked && <strong>This day is locked.</strong>}</Card>
-    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <Card className="table-card">{daily.isFetching && <div className="ledger-refreshing" aria-live="polite">Updating sales date…</div>}<table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th>Status</th></tr></thead><tbody>{daily.isLoading && !daily.data ? <tr><td colSpan={9}><EmptyState>Loading sales rows for {date}…</EmptyState></td></tr> : (daily.data ?? cachedRows).map(row => <SalesRow key={`${row.date}-${shopId}-${row.item.id}`} row={row} shopId={shopId} isLocked={isLocked} />)}{!daily.isLoading && !daily.data?.length && !cachedRows.length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card>}
+    {!shopId ? <EmptyState>Add a shop in More before recording sales.</EmptyState> : <Card className="table-card">{daily.isFetching && <div className="ledger-refreshing" aria-live="polite">Updating sales date…</div>}<table><thead><tr><th>Name</th><th>Opening</th><th>Produce</th><th>Sell</th><th>Closing</th><th>Unit price</th><th>Total price</th><th>Note</th><th>Status</th></tr></thead><tbody>{!(daily.data ?? cachedRows).length && (daily.isError || loadTimedOut) ? <tr><td colSpan={9}><EmptyState>{daily.error?.message || `Could not load sales rows for ${date}.`} <button onClick={() => { setLoadTimedOut(false); daily.refetch(); }}>Retry</button></EmptyState></td></tr> : daily.isLoading && !daily.data && !cachedRows.length ? <tr><td colSpan={9}><EmptyState>Loading sales rows for ${date}…</EmptyState></td></tr> : (daily.data ?? cachedRows).map(row => <SalesRow key={`${row.date}-${shopId}-${row.item.id}`} row={row} shopId={shopId} isLocked={isLocked} />)}{!daily.isLoading && !daily.isError && !loadTimedOut && !(daily.data ?? cachedRows).length && <tr><td colSpan={9}><EmptyState>No active sales items on this date.</EmptyState></td></tr>}</tbody></table></Card>}
   </>;
 }
 

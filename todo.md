@@ -135,3 +135,5 @@
 - [x] Make date changes display the selected date immediately with stale-request protection and replace the table data when the new response arrives.
 - [x] Validate the optimized mobile flow, run tests/build, push the correction to GitHub main, and verify the Netlify deployment.
 - [x] Filter Purchase records by the selected Business date so only that date’s purchases are shown, while preserving the existing Production/Packaging type tabs and cancellation workflow.
+- [x] Fix the mobile Production/Packaging/Sales ledger query stuck on Loading for a selected date; add bounded timeout, visible error state, and retry without losing already loaded rows.
+- [x] Run regression tests/build, push the mobile Loading correction to GitHub main, and verify the Netlify mobile workflow with the selected date.
