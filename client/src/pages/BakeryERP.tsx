@@ -5,6 +5,7 @@ import { normalizeSpreadsheetBusinessDate, stripUtf8Bom, toUtf8BomCsv } from "..
 import { firstSpreadsheetValue, resolveProductionImportDate } from "../../../shared/productionImport";
 import { filterReportRowsByItem } from "../../../shared/reporting";
 import DetailedReports from "./DetailedReports";
+import EllaAssistant from "@/components/EllaAssistant";
 import RecipeManager from "./RecipeManager";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
@@ -538,8 +539,8 @@ function ERPWorkspace() {
   const [from, setFrom] = useState(monthFirst());
   const [to, setTo] = useState(today());
   const heading = navigation.find(item => item.page === page)?.label ?? "Bakery ERP";
-  const content = page === "dashboard" ? <DashboardPage date={date} /> : page === "items" ? <ItemsPage date={date} isAdmin={user?.role === "admin"} /> : page === "purchases" ? <PurchasesPage date={date} /> : page === "production" ? <OperationsPage date={date} type="production" /> : page === "packaging" ? <OperationsPage date={date} type="packaging" /> : page === "sales" ? <SalesPage date={date} /> : page === "reports" ? <DetailedReports from={from} to={to} setFrom={setFrom} setTo={setTo} /> : <MorePage date={date} from={from} to={to} goTo={setPage} setDate={setDate} isAdmin={user?.role === "admin"} />;
-  return <div className="erp-shell"><header className="erp-topbar"><div><span className="brand-mark">B</span><div className="brand-copy"><strong>Bakery ERP</strong><small>{heading} · operational control</small></div></div><div className="top-actions"><DateControl value={date} onChange={setDate} /><button className="user-button" onClick={logout} title="Sign out"><span>{user?.name?.slice(0, 1).toUpperCase() || "U"}</span><LogOut size={15} /></button></div></header><main className="erp-main"><nav className="page-tabs" aria-label="Main navigation">{navigation.map(item => { const Icon = item.icon; return <button key={item.page} className={page === item.page ? "active" : ""} onClick={() => setPage(item.page)}><Icon size={15} />{item.label}</button>; })}</nav><div className="page-content">{content}</div></main></div>;
+  const content = page === "dashboard" ? <DashboardPage date={date} /> : page === "items" ? <ItemsPage date={date} isAdmin={user?.role === "admin"} /> : page === "purchases" ? <PurchasesPage date={date} /> : page === "production" ? <OperationsPage date={date} type="production" /> : page === "packaging" ? <OperationsPage date={date} type="packaging" /> : page === "sales" ? <SalesPage date={date} /> : page === "reports" ? <DetailedReports date={date} setDate={setDate} from={from} to={to} setFrom={setFrom} setTo={setTo} /> : <MorePage date={date} from={from} to={to} goTo={setPage} setDate={setDate} isAdmin={user?.role === "admin"} />;
+  return <div className="erp-shell"><header className="erp-topbar"><div><span className="brand-mark">B</span><div className="brand-copy"><strong>Bakery ERP</strong><small>{heading} · operational control</small></div></div><div className="top-actions"><DateControl value={date} onChange={setDate} /><EllaAssistant date={date} /><button className="user-button" onClick={logout} title="Sign out"><span>{user?.name?.slice(0, 1).toUpperCase() || "U"}</span><LogOut size={15} /></button></div></header><main className="erp-main"><nav className="page-tabs" aria-label="Main navigation">{navigation.map(item => { const Icon = item.icon; return <button key={item.page} className={page === item.page ? "active" : ""} onClick={() => setPage(item.page)}><Icon size={15} />{item.label}</button>; })}</nav><div className="page-content">{content}</div></main></div>;
 }
 
 export default function BakeryERP() { return <AccessGate><ERPWorkspace /></AccessGate>; }

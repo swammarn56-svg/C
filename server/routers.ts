@@ -1,4 +1,5 @@
 import { inventoryRouter } from "./routers/inventory";
+import { assistantRouter } from "./routers/assistant";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 
@@ -9,6 +10,7 @@ export const appRouter = router({
     logout: publicProcedure.mutation(() => ({ success: true } as const)),
   }),
   inventory: inventoryRouter,
+  assistant: assistantRouter,
 });
 
 export type AppRouter = typeof appRouter;

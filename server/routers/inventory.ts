@@ -91,7 +91,7 @@ function generatedIssuedMap(orderRows: Array<typeof orders.$inferSelect>, recipe
   return map;
 }
 
-async function operationLedgerForDate(date: string, type: "production" | "packaging") {
+export async function operationLedgerForDate(date: string, type: "production" | "packaging") {
   const db = await requireDb();
   const activeItems = await db
     .select()
