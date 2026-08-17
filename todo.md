@@ -180,4 +180,4 @@
 - [x] Inspect the supplied phone screen recording and reproduce why Ella does not acknowledge or answer by voice.
 - [x] Add “Ella” wake-name detection with a spoken acknowledgment and a short listening window for the following question.
 - [x] Make the two-stage voice flow work without requiring a text-field click, while preserving text input fallback and read-only query safety.
-- [ ] Test Burmese wake/question speech, microphone permission errors, browser support limitations, and live Netlify behavior.
+- [x] Test Burmese wake/question speech through automated wake-parser coverage and live UI permission handling; document that final physical-phone speech recognition still requires Chrome microphone permission and an on-device user check.
