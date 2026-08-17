@@ -176,3 +176,8 @@
 - [x] Expand Ella’s deterministic fallback to recognize Burmese possessive/question phrasing and common Burmese-English mixed terms without requiring exact token order.
 - [x] Add regression coverage for natural Burmese Closing, Used, Purchase, Damage, Sales, and explicit date/date-range questions.
 - [x] Re-verify Ella live on Netlify after the correction and confirm read-only behavior remains intact.
+
+- [x] Inspect the supplied phone screen recording and reproduce why Ella does not acknowledge or answer by voice.
+- [x] Add “Ella” wake-name detection with a spoken acknowledgment and a short listening window for the following question.
+- [x] Make the two-stage voice flow work without requiring a text-field click, while preserving text input fallback and read-only query safety.
+- [ ] Test Burmese wake/question speech, microphone permission errors, browser support limitations, and live Netlify behavior.

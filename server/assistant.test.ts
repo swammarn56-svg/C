@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inferEllaIntent, matchEllaItems, normalizeEllaText, resolveEllaDateRange } from "../shared/ella";
+import { extractEllaWakeQuestion, inferEllaIntent, matchEllaItems, normalizeEllaText, resolveEllaDateRange } from "../shared/ella";
 
 describe("Ella read-only intent helpers", () => {
   const items = [
@@ -19,6 +19,12 @@ describe("Ella read-only intent helpers", () => {
   it("returns ambiguous candidates instead of guessing", () => {
     const similar = [items[1], { id: 4, name: "ဂျုံမှုန့်", itemType: "production", displayUnit: "g" }];
     expect(matchEllaItems(similar, "ဂျုံ").map(item => item.id)).toEqual([2, 4]);
+  });
+
+  it("detects the Burmese wake name and extracts a following question", () => {
+    expect(extractEllaWakeQuestion("အဲလာ၊ ဂျုံ Closing ဘယ်လောက်လဲ")).toEqual({ wakeDetected: true, question: "ဂျုံ Closing ဘယ်လောက်လဲ" });
+    expect(extractEllaWakeQuestion("Ella")).toEqual({ wakeDetected: true, question: "" });
+    expect(extractEllaWakeQuestion("ဂျုံ Closing ဘယ်လောက်လဲ").wakeDetected).toBe(false);
   });
 
   it("parses natural Burmese Closing phrasing with a possessive particle", () => {

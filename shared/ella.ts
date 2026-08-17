@@ -25,6 +25,13 @@ export function resolveEllaDateRange(intent: EllaReportIntent, businessDate: str
   return { from, to };
 }
 
+export function extractEllaWakeQuestion(transcript: string) {
+  const value = transcript.normalize("NFC").trim();
+  const match = value.match(/^(?:အဲလာ|အယ်လာ|အယ်လား|ella|hey ella)(?:[\s၊၊။,.!?-]+(.*))?$/i);
+  if (!match) return { wakeDetected: false, question: value };
+  return { wakeDetected: true, question: (match[1] || "").trim() };
+}
+
 export function inferEllaIntent(question: string, items: EllaItemCandidate[]): EllaParsedIntent {
   const text = normalizeEllaText(question);
   const dates = Array.from(question.matchAll(/(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})日?/g)).map(match => `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`);
