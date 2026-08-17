@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchEllaItems, normalizeEllaText, resolveEllaDateRange } from "../shared/ella";
+import { inferEllaIntent, matchEllaItems, normalizeEllaText, resolveEllaDateRange } from "../shared/ella";
 
 describe("Ella read-only intent helpers", () => {
   const items = [
@@ -19,6 +19,20 @@ describe("Ella read-only intent helpers", () => {
   it("returns ambiguous candidates instead of guessing", () => {
     const similar = [items[1], { id: 4, name: "ဂျုံမှုန့်", itemType: "production", displayUnit: "g" }];
     expect(matchEllaItems(similar, "ဂျုံ").map(item => item.id)).toEqual([2, 4]);
+  });
+
+  it("parses natural Burmese Closing phrasing with a possessive particle", () => {
+    const parsed = inferEllaIntent("ဂျုံရဲ့ Closing ဘယ်လောက်လဲ", items);
+    expect(parsed.intent).toBe("closing");
+    expect(parsed.itemId).toBe(1);
+    expect(parsed.itemName).toBe("ဂျုံ");
+  });
+
+  it("parses Burmese month-to-date Used phrasing", () => {
+    const parsed = inferEllaIntent("ဒီလ ဂျုံ အသုံးဘယ်လောက်လဲ", items);
+    expect(parsed.intent).toBe("used_total");
+    expect(parsed.itemId).toBe(1);
+    expect(resolveEllaDateRange(parsed.intent, "2026-08-17", parsed.fromDate, parsed.toDate)).toEqual({ from: "2026-08-01", to: "2026-08-17" });
   });
 
   it("uses the global date for current-day closing questions", () => {

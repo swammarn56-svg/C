@@ -171,3 +171,8 @@
 - [x] Repair and verify Reports daily/range selection, report rendering, and item selection before connecting Ella to report data.
 - [x] Add Ella tests for date-range resolution, Myanmar item matching, ambiguity handling, and read-only scope.
 - [x] Verify Ella’s live read-only Burmese question succeeds on Netlify when OPENAI_API_KEY is unavailable, and confirm it cannot mutate records.
+
+- [x] Fix Ella so natural Burmese phrasing such as “ဂျုံရဲ့ Closing ဘယ်လောက်လဲ” reliably returns the matching item’s current-date Closing.
+- [x] Expand Ella’s deterministic fallback to recognize Burmese possessive/question phrasing and common Burmese-English mixed terms without requiring exact token order.
+- [x] Add regression coverage for natural Burmese Closing, Used, Purchase, Damage, Sales, and explicit date/date-range questions.
+- [x] Re-verify Ella live on Netlify after the correction and confirm read-only behavior remains intact.
