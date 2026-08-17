@@ -5,12 +5,12 @@ import { invokeLLM } from "../_core/llm";
 import { protectedProcedure, router } from "../_core/trpc";
 import { requireDb } from "../db";
 import { operationLedgerForDate } from "./inventory";
+import { inferEllaIntent, matchEllaItems, resolveEllaDateRange } from "../../shared/ella";
 
 const businessDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const toDbDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const toDate = (value: unknown) => value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 const num = (value: unknown) => Number(value ?? 0);
-const monthStart = (value: string) => `${value.slice(0, 7)}-01`;
 
 const intentSchema = {
   type: "object",
@@ -37,18 +37,8 @@ type ParsedIntent = {
   confidence: number;
 };
 
-function normalize(value: string) {
-  return value.normalize("NFC").replace(/[\s၊၊။,.!?]+/g, "").toLowerCase();
-}
-
 function formatQuantity(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(value);
-}
-
-function dateRange(parsed: ParsedIntent, date: string) {
-  const from = parsed.fromDate || (parsed.intent === "used_total" || parsed.intent === "purchase_total" || parsed.intent === "damage_total" || parsed.intent === "sales_total" ? monthStart(date) : date);
-  const to = parsed.toDate || date;
-  return { from, to };
 }
 
 export const assistantRouter = router({
@@ -63,7 +53,9 @@ export const assistantRouter = router({
       if (!catalog.length) return { answer: "လက်ရှိနေ့အတွက် Item စာရင်းမတွေ့ပါ။", parsed: null, readOnly: true };
 
       const catalogText = catalog.map(item => `${item.id}|${item.name}|${item.itemType}`).join("\n");
-      const response = await invokeLLM({
+      let parsed: ParsedIntent;
+      try {
+        const response = await invokeLLM({
         model: "gpt-5-mini",
         messages: [
           { role: "system", content: "You are Ella, a read-only bakery ERP question parser. Understand Burmese and Burmese-English mixed questions. Never invent an item ID. Map the question only to one of the allowed intents. The server will execute read-only queries; do not return SQL. Use the supplied catalog. For current-day questions leave dates null. For a month/current-period usage question, leave dates null so the server uses the current month start through the business date. If the question is not a supported ERP read question, use unknown." },
@@ -71,24 +63,24 @@ export const assistantRouter = router({
         ],
         response_format: { type: "json_schema", json_schema: { name: "ella_intent", strict: true, schema: intentSchema } },
         reasoning: { effort: "low" },
-      });
-      const content = response.choices[0]?.message?.content;
-      if (typeof content !== "string") return { answer: "မေးခွန်းကို နားမလည်သေးပါ။ Item နဲ့ လိုချင်တဲ့စာရင်းကို ထပ်ပြောပေးပါ။", parsed: null, readOnly: true };
-      let parsed: ParsedIntent;
-      try { parsed = JSON.parse(content) as ParsedIntent; } catch { return { answer: "မေးခွန်းကို စာရင်းမေးခွန်းအဖြစ် မခွဲနိုင်သေးပါ။", parsed: null, readOnly: true }; }
+        });
+        const content = response.choices[0]?.message?.content;
+        if (typeof content !== "string") throw new Error("Ella parser returned no structured content");
+        parsed = JSON.parse(content) as ParsedIntent;
+      } catch {
+        parsed = inferEllaIntent(input.question, catalog);
+      }
       if (parsed.intent === "unknown") return { answer: "Ella က လက်ရှိ Closing, Used, Purchase, Damage နဲ့ Sales စာရင်းတွေကိုသာ ဖတ်ပြနိုင်ပါတယ်။", parsed, readOnly: true };
 
       const requestedId = parsed.itemId && catalog.some(item => item.id === parsed.itemId) ? parsed.itemId : null;
-      const requestedName = parsed.itemName ? normalize(parsed.itemName) : "";
-      const exactMatches = requestedName ? catalog.filter(item => normalize(item.name) === requestedName) : [];
-      const partialMatches = requestedName && !exactMatches.length ? catalog.filter(item => normalize(item.name).includes(requestedName) || requestedName.includes(normalize(item.name))) : [];
-      const matched = requestedId ? catalog.filter(item => item.id === requestedId) : exactMatches.length ? exactMatches : partialMatches;
+      const requestedName = parsed.itemName || "";
+      const matched = matchEllaItems(catalog, requestedName, requestedId);
       if (matched.length !== 1) {
         const names = matched.slice(0, 5).map(item => item.name).join("၊ ");
         return { answer: matched.length ? `ဒီ Item အမည်က မရှင်းသေးပါ။ ${names} ထဲက တစ်ခုကို ရွေးပေးပါ။` : "ဒီနေ့အတွက် အဲဒီ Item ကို မတွေ့ပါ။ Item Dashboard ထဲက အမည်အတိုင်း ပြန်မေးပေးပါ။", parsed, candidates: matched, readOnly: true };
       }
       const item = matched[0];
-      const range = dateRange(parsed, input.date);
+      const range = resolveEllaDateRange(parsed.intent, input.date, parsed.fromDate, parsed.toDate);
       if (range.from > range.to) return { answer: "စတင်ရက်က အဆုံးရက်ထက် နောက်ကျနေပါတယ်။", parsed, readOnly: true };
 
       if (parsed.intent === "closing") {

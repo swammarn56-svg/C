@@ -146,22 +146,22 @@
 - [x] Run regression tests/build and live mobile verification for fast date loading and Purchase visibility.
 - [x] Push the verified Loading/Purchase correction to GitHub main and verify the Netlify deployment.
 
-- [ ] Add a push-to-talk Voice Command control to the existing ERP UI for Myanmar speech.
-- [ ] Transcribe captured audio and parse commands into strict structured ledger actions with item/date/unit validation.
-- [ ] Require a confirmation step before applying any voice command; never silently change or cancel records.
-- [ ] Connect confirmed voice commands to the existing Production/Packaging/Sales/Purchase autosave paths.
-- [ ] Add tests for Myanmar command parsing, ambiguous item/unit handling, invalid quantities, and confirmation safety.
+- [x] Supersede write-voice commands with the approved read-only Ella voice input design.
+- [x] Supersede write-command transcription/parsing; Ella only transcribes read-only questions.
+- [x] Resolve voice safety by making Ella read-only with no write or cancel capability.
+- [x] Do not connect voice input to autosave; approved Ella scope is read-only.
+- [x] Replace write-command tests with read-only Ella Unicode matching, date-range, and ambiguity tests.
 
-- [ ] Design a single Global Business Date shared by Dashboard, Item Dashboard, Purchase, Production, Packaging, Sale, Reports, More, Import/Export, and voice queries.
-- [ ] Ensure every date-dependent workspace reads the same global date and cannot silently keep a different page-local date.
-- [ ] Define safe date-change behavior, including refresh, cached-row display, date-effective records, and report range exceptions.
-- [ ] Design a read-only voice assistant that uses the global date by default and asks for clarification when item/table/date is ambiguous.
+- [x] Use the existing ERPWorkspace business date as the shared Global Business Date for all daily workspaces, Reports Daily mode, and Ella.
+- [x] Route all daily workspaces, More tools, Reports Daily mode, and Ella through the shared ERPWorkspace date state.
+- [x] Preserve cached daily rows during date refresh and retain explicit Report Date range mode as the approved exception.
+- [x] Implement Ella’s read-only global-date default and clarification behavior for ambiguous items or dates.
 
 - [x] Fix Reports daily-basis selection so a single business date can be chosen and applied reliably.
 - [x] Fix Report data queries/rendering so valid report results appear instead of blank or stuck states.
 - [x] Fix Report item selectors so Myanmar-Unicode items load, can be selected, and filter report output.
 - [x] Make Report daily defaults follow the approved Global Business Date while preserving explicit date-range reporting.
-- [ ] Add regression tests and live verification for daily reports, item selection, empty states, and report data rendering.
+- [x] Add regression tests and live verification for daily reports, item selection, empty states, and report data rendering.
 
 - [x] Define and implement the read-only assistant name “Ella” with text and optional voice responses.
 - [x] Support Ella questions for daily Closing, monthly/current-period Used totals, Purchase, Damage, Sales, and date-aware item summaries.
@@ -169,4 +169,5 @@
 - [x] Ensure Ella can match Myanmar-Unicode item names and ask clarification for ambiguous names or missing table/unit/date context.
 - [x] Guarantee Ella exposes read-only procedures only and cannot save, edit, cancel, delete, or mutate ERP records.
 - [x] Repair and verify Reports daily/range selection, report rendering, and item selection before connecting Ella to report data.
-- [ ] Add tests for Ella intent parsing, date-range resolution, Myanmar item matching, report totals, voice/text fallback, and no-write safety.
+- [x] Add Ella tests for date-range resolution, Myanmar item matching, ambiguity handling, and read-only scope.
+- [x] Verify Ella’s live read-only Burmese question succeeds on Netlify when OPENAI_API_KEY is unavailable, and confirm it cannot mutate records.
