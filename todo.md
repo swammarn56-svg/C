@@ -140,3 +140,8 @@
 - [x] Restore editable manual In fields in Production and Packaging while keeping confirmed Purchase-derived In as the default and preserving cancel/carryforward behavior.
 - [x] Diagnose and fix the mobile Production/Packaging/Sales query that remains stuck on Loading; verify the actual API/session response, not only the UI timeout.
 - [x] Run tests/build, verify manual In and mobile loading, push the correction to GitHub main, and redeploy/verify through Netlify.
+
+- [x] Diagnose and fix slow initial app and business-date Loading without blocking already cached ledger rows.
+- [x] Restore and verify Purchase records for the selected business date, including date switching and empty/error states.
+- [x] Run regression tests/build and live mobile verification for fast date loading and Purchase visibility.
+- [x] Push the verified Loading/Purchase correction to GitHub main and verify the Netlify deployment.

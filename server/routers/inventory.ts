@@ -283,10 +283,10 @@ export const inventoryRouter = router({
 
   purchases: router({
     list: protectedProcedure
-      .input(z.object({ from: businessDate.optional(), to: businessDate.optional(), type: itemType.optional() }).optional())
+      .input(z.object({ date: businessDate.optional(), from: businessDate.optional(), to: businessDate.optional(), type: itemType.optional() }).optional())
       .query(async ({ input }) => {
         const db = await requireDb();
-        const conditions = [input?.from ? gte(purchases.purchaseDate, dbDate(input.from)) : undefined, input?.to ? lte(purchases.purchaseDate, dbDate(input.to)) : undefined, input?.type ? eq(items.itemType, input.type) : undefined].filter(Boolean);
+        const conditions = [input?.date ? and(gte(purchases.purchaseDate, dbDate(input.date)), lt(purchases.purchaseDate, new Date(dbDate(input.date).getTime() + 24 * 60 * 60 * 1000))) : undefined, input?.from ? gte(purchases.purchaseDate, dbDate(input.from)) : undefined, input?.to ? lt(purchases.purchaseDate, new Date(dbDate(input.to).getTime() + 24 * 60 * 60 * 1000)) : undefined, input?.type ? eq(items.itemType, input.type) : undefined].filter(Boolean);
         const result = await db
           .select({ purchase: purchases, item: items })
           .from(purchases)
