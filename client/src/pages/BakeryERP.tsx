@@ -97,8 +97,17 @@ function AccessGate({ children }: { children: ReactNode }) {
         setError("Supabase Auth is not configured for this deployment.");
       } else {
         try {
-          const result = await withAuthTimeout(supabase.auth.signInWithPassword({ email: email.trim(), password }), "Sign-in timed out. Check your connection and try again.");
-          if (result.error) setError(result.error.message);
+          const result = await withAuthTimeout(fetch("/api/auth/sign-in", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email.trim(), password }),
+          }).then(async response => {
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error_description || payload.msg || payload.error || "Unable to sign in.");
+            return payload as { access_token: string; refresh_token: string };
+          }), "Sign-in timed out. Check your connection and try again.");
+          const sessionResult = await supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
+          if (sessionResult.error) setError(sessionResult.error.message);
         } catch (signInError) {
           setError(signInError instanceof Error ? signInError.message : "Unable to sign in. Please try again.");
         }

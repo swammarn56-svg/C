@@ -232,3 +232,6 @@
 
 - [x] Deploy the corrected Bakery ERP from GitHub `swammarn56-svg/C` main to the user’s Netlify site `swammarn` only; do not use Manus Hosting as production hosting.
 - [x] Verify the Netlify live site serves the latest GitHub revision and the Supabase sign-in loading fix; deployment `6a83fd5e4df397adf5f56a21` is Ready and `https://swammarn.netlify.app` returns HTTP 200.
+
+- [ ] Diagnose the confirmed Supabase sign-in timeout on the live Netlify site instead of treating the timeout message as the fix.
+- [ ] Correct the production auth/API configuration or request path, redeploy through GitHub and Netlify only, and verify a real sign-in request completes.
