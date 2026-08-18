@@ -1,4 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth, withAuthTimeout } from "@/_core/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
 import { normalizeSpreadsheetBusinessDate, stripUtf8Bom, toUtf8BomCsv } from "../../../shared/spreadsheet";
@@ -81,7 +81,7 @@ function Stat({ label, value, tone = "default" }: { label: string; value: string
 }
 
 function AccessGate({ children }: { children: ReactNode }) {
-  const { loading, user } = useAuth();
+  const { loading, user, error: authError, refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -96,12 +96,16 @@ function AccessGate({ children }: { children: ReactNode }) {
       if (!supabase) {
         setError("Supabase Auth is not configured for this deployment.");
       } else {
-        const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (result.error) setError(result.error.message);
+        try {
+          const result = await withAuthTimeout(supabase.auth.signInWithPassword({ email: email.trim(), password }), "Sign-in timed out. Check your connection and try again.");
+          if (result.error) setError(result.error.message);
+        } catch (signInError) {
+          setError(signInError instanceof Error ? signInError.message : "Unable to sign in. Please try again.");
+        }
       }
       setBusy(false);
     };
-    return <main className="auth-screen"><Card className="auth-card"><Package size={32} /><h1>Bakery ERP</h1><p>Sign in with your Supabase account to access purchase, production, packaging, sales, and reports.</p><form className="form-grid" onSubmit={submit}><label>Email<input required type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} /></label><label>Password<input required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} /></label>{error && <p className="form-error full-width" role="alert">{error}</p>}<button className="primary-button" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form></Card></main>;
+    return <main className="auth-screen"><Card className="auth-card"><Package size={32} /><h1>Bakery ERP</h1><p>Sign in with your Supabase account to access purchase, production, packaging, sales, and reports.</p><form className="form-grid" onSubmit={submit}><label>Email<input required type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} /></label><label>Password<input required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} /></label>{(error || authError) && <p className="form-error full-width" role="alert">{error || authError?.message}</p>}<button className="primary-button" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>{authError && <button type="button" onClick={() => void refresh()} disabled={loading}>Retry session</button>}</form></Card></main>;
   }
   return <>{children}</>;
 }

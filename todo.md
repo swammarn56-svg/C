@@ -223,3 +223,6 @@
 - [x] Remove Gemini intent/write-proposal routes, adapter code, tests, and configuration references while preserving deterministic ERP workflows.
 - [x] Disable GEMINI_API_KEY with a non-credential sentinel and verify no Ella/Gemini integration remains.
 - [x] Run the full regression suite, production build, and UI verification after Ella removal.
+
+- [x] Fix Supabase sign-in/session initialization hanging indefinitely on `Loading Bakery ERP…` after login, with bounded recovery and visible errors.
+- [x] Add auth regression coverage, rerun the full test/build checks, and verify the login screen and authenticated workspace behavior.
