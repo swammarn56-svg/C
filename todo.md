@@ -235,3 +235,6 @@
 
 - [x] Diagnose the confirmed Supabase sign-in timeout on the live Netlify site instead of treating the timeout message as the fix; direct browser auth was replaced with a same-origin Netlify proxy after confirming the backend endpoint responds.
 - [ ] Correct the production auth/API configuration or request path, redeploy through GitHub and Netlify only, and verify a real sign-in request completes.
+
+- [ ] Reproduce and fix the still-failing real-account Supabase sign-in timeout; do not treat the proxy smoke test with invalid credentials as proof of a successful login.
+- [ ] Run a real-account-compatible auth verification, push only the verified fix to GitHub, and do not deploy to any Netlify account until the user provides the new account connection.
