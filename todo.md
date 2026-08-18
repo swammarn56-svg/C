@@ -238,3 +238,5 @@
 
 - [ ] Reproduce and fix the still-failing real-account Supabase sign-in timeout; do not treat the proxy smoke test with invalid credentials as proof of a successful login.
 - [ ] Run a real-account-compatible auth verification, push only the verified fix to GitHub, and do not deploy to any Netlify account until the user provides the new account connection.
+
+- [x] Produce a detailed developer-facing Bakery ERP workflow and recreation specification; do not modify or deploy the application for this documentation request.
