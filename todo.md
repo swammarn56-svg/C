@@ -227,5 +227,5 @@
 - [x] Fix Supabase sign-in/session initialization hanging indefinitely on `Loading Bakery ERP…` after login, with bounded recovery and visible errors.
 - [x] Add auth regression coverage, rerun the full test/build checks, and verify the login screen and authenticated workspace behavior.
 
-- [ ] Verify whether the latest Ella-removal and authentication-fix checkpoint is pushed to GitHub.
-- [ ] Verify whether Netlify has deployed the latest GitHub revision, and synchronize only through the user’s authorized GitHub/Netlify workflow if needed.
+- [x] Verify whether the latest Ella-removal and authentication-fix checkpoint is pushed to GitHub; synchronized GitHub C main to commit ade2795.
+- [ ] Verify whether Netlify has deployed the latest GitHub revision; GitHub is synchronized, but Netlify still reports its previous ready deploy and requires a later deployment check.
