@@ -228,4 +228,7 @@
 - [x] Add auth regression coverage, rerun the full test/build checks, and verify the login screen and authenticated workspace behavior.
 
 - [x] Verify whether the latest Ella-removal and authentication-fix checkpoint is pushed to GitHub; synchronized GitHub C main to commit ade2795.
-- [ ] Verify whether Netlify has deployed the latest GitHub revision; GitHub is synchronized, but Netlify still reports its previous ready deploy and requires a later deployment check.
+- [x] Verify whether Netlify has deployed the latest GitHub revision; latest production deployment `6a83fd5e4df397adf5f56a21` is Ready.
+
+- [x] Deploy the corrected Bakery ERP from GitHub `swammarn56-svg/C` main to the user’s Netlify site `swammarn` only; do not use Manus Hosting as production hosting.
+- [x] Verify the Netlify live site serves the latest GitHub revision and the Supabase sign-in loading fix; deployment `6a83fd5e4df397adf5f56a21` is Ready and `https://swammarn.netlify.app` returns HTTP 200.
