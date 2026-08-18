@@ -59,13 +59,13 @@ function ensureEffective(item: { effectiveFrom: Date | string; inactiveFrom: Dat
   }
 }
 
-async function assertDayOpen(date: string, ledgerType: string) {
+export async function assertDayOpen(date: string, ledgerType: string) {
   const db = await requireDb();
   const lock = await db.select({ locked: dailyLocks.locked }).from(dailyLocks).where(and(eq(dailyLocks.businessDate, dbDate(date)), eq(dailyLocks.ledgerType, ledgerType))).limit(1);
   if (lock[0]?.locked) throw new TRPCError({ code: "FORBIDDEN", message: `The ${ledgerType} ledger is locked for ${date}. An administrator must reopen it first.` });
 }
 
-async function recordAudit(ctx: { user: { id: number } }, action: string, entityType: string, entityId: number | null, businessDate: string | null, details: Record<string, unknown>) {
+export async function recordAudit(ctx: { user: { id: number } }, action: string, entityType: string, entityId: number | null, businessDate: string | null, details: Record<string, unknown>) {
   const db = await requireDb();
   await db.insert(auditLogs).values({ action, entityType, entityId, businessDate: businessDate ? dbDate(businessDate) : null, details: JSON.stringify(details), createdBy: ctx.user.id });
 }

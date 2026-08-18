@@ -181,3 +181,45 @@
 - [x] Add “Ella” wake-name detection with a spoken acknowledgment and a short listening window for the following question.
 - [x] Make the two-stage voice flow work without requiring a text-field click, while preserving text input fallback and read-only query safety.
 - [x] Test Burmese wake/question speech through automated wake-parser coverage and live UI permission handling; document that final physical-phone speech recognition still requires Chrome microphone permission and an on-device user check.
+
+- [ ] Reproduce and diagnose the confirmed phone Chrome failure where calling Ella produces no acknowledgment, no listening state, and no text response.
+- [ ] Make the mobile voice control show an immediate visible state and a usable fallback when SpeechRecognition or microphone permission is unavailable.
+- [ ] Verify wake-word and direct-question behavior on the deployed mobile path, with text input remaining functional.
+
+- [ ] Evaluate a true always-listening “Ella” wake-word mode that does not require tapping the website microphone button.
+- [ ] Compare suitable wake-word and voice-assistant tools/devices for Burmese question capture and read-only ERP answers.
+- [ ] Recommend the practical architecture and confirm the chosen tool before implementing another voice change.
+- [ ] Identify the minimum required AI/API credentials only after selecting the wake-word, Burmese transcription, and text-to-speech architecture.
+
+- [ ] Integrate Gemini as the ERP assistant after the user supplies/approves the required API credential.
+- [ ] Ground Gemini with the Bakery ERP workflow, Global Business Date, item catalog, units, shops, recipes, carryforward, Purchase Auto In, and Reports rules.
+- [ ] Add structured read-only tools for Closing, Used, Purchase, Damage, Sales, and date/date-range reports.
+- [ ] Add structured write proposals for Purchase, Production, Packaging, Sales, Opening, Issued, Return, Damage, Order, and supported cancellation/edit workflows.
+- [ ] Require a second verification step for every AI-initiated write; never execute on the first interpretation alone.
+- [ ] Add ambiguity checks, permission checks, audit logging, duplicate-submit protection, and safe failure/rollback behavior for AI writes.
+- [ ] Test Burmese natural-language answers and writes, including item/date/unit/shop ambiguity and confirmation cancellation.
+
+- [ ] Store the supplied Gemini API key as a managed server-side secret without exposing or echoing it.
+- [ ] Validate Gemini connectivity and choose the model/API path for Ella’s structured ERP workflow.
+- [ ] Keep every Gemini-initiated ERP write behind a second verification step and existing server validations.
+
+- [ ] Ground Ella with every current ERP workflow, field, formula, permission, date rule, and report definition.
+- [ ] Make Ella answer supported workflow questions in Burmese text and browser-spoken Burmese where speech synthesis is available.
+- [ ] Add workflow-aware Gemini structured tools for read-only queries and second-verified writes without direct database access.
+- [ ] Test full-workflow questions and write proposals across Dashboard, Items, Purchase, Production, Packaging, Sale, Order, Recipe, Reports, More, and Import/Export.
+
+- [ ] Open Google AI Studio for user-controlled login without receiving or storing the Google password.
+- [ ] Help create/retrieve a Gemini API key from a permitted project and validate generation access.
+- [ ] Replace the denied Gemini key only after the user provides the new key through the secure secret flow.
+
+- [ ] Create a new Google Cloud project through the authenticated Google session only after any billing/consent gate is explicitly approved.
+- [ ] Import the new project into Google AI Studio and create a Gemini API key with generation access.
+- [ ] Validate the new key with both the lightweight models endpoint and a real generation request before resuming Ella integration.
+
+- [x] Add and pass a focused Vitest check that GEMINI_API_KEY authenticates against Google’s Generative Language API models endpoint.
+- [ ] Resolve Google project-level permission denial for Gemini generateContent in Bakery ERP Ella, then rerun the live generateContent and Ella workflow checks.
+
+- [x] Remove Ella assistant UI, wake-word detection, voice input/output, and related navigation from the ERP.
+- [x] Remove Gemini intent/write-proposal routes, adapter code, tests, and configuration references while preserving deterministic ERP workflows.
+- [x] Disable GEMINI_API_KEY with a non-credential sentinel and verify no Ella/Gemini integration remains.
+- [x] Run the full regression suite, production build, and UI verification after Ella removal.
