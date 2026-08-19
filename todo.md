@@ -266,6 +266,6 @@
 - [ ] Diagnose the swammarn30 live `Signing in...` hang after the site became public.
 - [ ] Fix and redeploy the verified authentication path, then confirm the real Supabase account reaches the ERP dashboard and existing data loads.
 
-- [ ] Fix mobile login remaining stuck at Signing in by bounding Supabase session installation and surfacing client-side errors
-- [ ] Verify login fix with regression tests, production build, and live Netlify smoke test
-- [ ] Synchronize corrected login code to GitHub and confirm Netlify deployment
+- [x] Fix mobile login remaining stuck at Signing in by bounding Supabase session installation and surfacing client-side errors
+- [x] Verify login fix with regression tests, production build, and live Netlify smoke test
+- [x] Synchronize corrected login code to GitHub and confirm Netlify deployment
