@@ -240,3 +240,11 @@
 - [ ] Run a real-account-compatible auth verification, push only the verified fix to GitHub, and do not deploy to any Netlify account until the user provides the new account connection.
 
 - [x] Produce a detailed developer-facing Bakery ERP workflow and recreation specification; do not modify or deploy the application for this documentation request.
+
+- [ ] Identify the new Netlify account’s destination site/project using the newly provided credential; do not use the depleted `swammarn` site.
+- [ ] Verify the GitHub source and required Supabase/Netlify environment variables before deploying to the new site.
+- [ ] Deploy and smoke-test the verified Bakery ERP on the new Netlify site only.
+
+- [x] Change the canonical `viss` conversion from 1632.93 g to 1600 g across shared calculations, Purchase conversion, reports, and documentation.
+- [x] Add/update regression tests proving `1 viss = 1600 g` and no affected workflow uses the old factor.
+- [ ] Push the verified 1600-gram conversion to GitHub and deploy only to the new Netlify site/account.

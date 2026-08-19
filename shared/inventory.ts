@@ -1,4 +1,4 @@
-export const VISS_TO_GRAMS = 1632.93;
+export const VISS_TO_GRAMS = 1600;
 
 export type ItemType = "production" | "packaging" | "sales";
 export type DisplayUnit = "g" | "pcs";

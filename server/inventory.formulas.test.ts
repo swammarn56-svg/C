@@ -26,7 +26,8 @@ describe("purchase canonical quantities", () => {
   it("converts g, kg, viss, and pieces to canonical grams", () => {
     expect(normalizePurchaseQuantity(500, "g", 1)).toBe(500);
     expect(normalizePurchaseQuantity(2, "kg", 1)).toBe(2000);
-    expect(normalizePurchaseQuantity(1, "viss", 1)).toBe(VISS_TO_GRAMS);
+    expect(VISS_TO_GRAMS).toBe(1600);
+    expect(normalizePurchaseQuantity(1, "viss", 1)).toBe(1600);
     expect(normalizePurchaseQuantity(12, "pcs", 75)).toBe(900);
   });
 });

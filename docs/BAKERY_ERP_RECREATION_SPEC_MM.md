@@ -199,10 +199,10 @@ Canonical constants နှင့် formulas ကို backend, frontend display
 |---|---:|---:|
 | `g` | ×1 | မလက်ခံရ |
 | `kg` | ×1000 | မလက်ခံရ |
-| `viss` | ×1632.93 | မလက်ခံရ |
+| `viss` | ×1600 | မလက်ခံရ |
 | `pcs` | မလက်ခံရ | မူရင်း pcs အတိုင်း |
 
-> `VISS_TO_GRAMS = 1632.93` ကို source of truth အဖြစ် သတ်မှတ်ရမည်။ Piece-based inventory ကို grams သို့ အလိုအလျောက်မပြောင်းဘဲ pcs semantics ကို ထိန်းသိမ်းရမည်။ Project version များအကြား legacy `quantityGrams` column naming က piece data အတွက် ရှုပ်ထွေးနိုင်သဖြင့် UI/API contract တွင် `baseQuantity` နှင့် `baseUnit` ကို ရှင်းလင်းသုံးပါ။
+> `VISS_TO_GRAMS = 1600` ကို source of truth အဖြစ် သတ်မှတ်ရမည်။ ထို့ကြောင့် `1 viss = 1600 g` ဖြစ်ရမည်။ Piece-based inventory ကို grams သို့ အလိုအလျောက်မပြောင်းဘဲ pcs semantics ကို ထိန်းသိမ်းရမည်။ Project version များအကြား legacy `quantityGrams` column naming က piece data အတွက် ရှုပ်ထွေးနိုင်သဖြင့် UI/API contract တွင် `baseQuantity` နှင့် `baseUnit` ကို ရှင်းလင်းသုံးပါ။
 
 ### ၅.၁ Monthly average cost
 
