@@ -269,3 +269,6 @@
 - [x] Fix mobile login remaining stuck at Signing in by bounding Supabase session installation and surfacing client-side errors
 - [x] Verify login fix with regression tests, production build, and live Netlify smoke test
 - [x] Synchronize corrected login code to GitHub and confirm Netlify deployment
+
+- [ ] Resolve the remaining swammarn30 mobile login failure so the supplied Supabase account reaches the ERP dashboard
+- [ ] Verify session persistence and dashboard loading in the deployed browser flow
