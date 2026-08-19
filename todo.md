@@ -272,3 +272,6 @@
 
 - [x] Resolve the remaining swammarn30 mobile login failure so the supplied Supabase account reaches the ERP dashboard
 - [ ] Verify session persistence and dashboard loading in the deployed browser flow
+
+- [ ] Reproduce and resolve the remaining mobile browser login failure until the supplied account reaches the ERP dashboard
+- [ ] Verify the deployed browser session and dashboard loading after the final login patch

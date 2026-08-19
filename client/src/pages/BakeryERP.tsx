@@ -1,5 +1,5 @@
 import { useAuth, withAuthTimeout } from "@/_core/hooks/useAuth";
-import { supabase } from "@/lib/supabase";
+import { persistSupabaseSessionFallback, supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
 import { normalizeSpreadsheetBusinessDate, stripUtf8Bom, toUtf8BomCsv } from "../../../shared/spreadsheet";
 import { firstSpreadsheetValue, resolveProductionImportDate } from "../../../shared/productionImport";
@@ -96,6 +96,7 @@ function AccessGate({ children }: { children: ReactNode }) {
       if (!supabase) {
         setError("Supabase Auth is not configured for this deployment.");
       } else {
+        let proxySession: { access_token: string; refresh_token: string; token_type?: string; expires_in?: number; expires_at?: number; user?: unknown } | null = null;
         try {
           const result = await withAuthTimeout(fetch("/api/auth/sign-in", {
             method: "POST",
@@ -106,13 +107,23 @@ function AccessGate({ children }: { children: ReactNode }) {
             if (!response.ok) throw new Error(payload.error_description || payload.msg || payload.error || "Unable to sign in.");
             return payload as { access_token: string; refresh_token: string };
           }), "Sign-in timed out. Check your connection and try again.");
+          proxySession = result;
           const sessionResult = await withAuthTimeout(
             supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token }),
             "Session installation timed out. Please refresh the page and try again.",
           );
           if (sessionResult.error) throw sessionResult.error;
         } catch (signInError) {
-          setError(signInError instanceof Error ? signInError.message : "Unable to sign in. Please try again.");
+          const message = signInError instanceof Error ? signInError.message : "Unable to sign in. Please try again.";
+          // If the Supabase client lock/storage path is the only failing step,
+          // persist the already-validated proxy session and reload into the normal
+          // getSession bootstrap path instead of leaving the user at Signing in.
+          if (message.includes("Session installation timed out") && proxySession) {
+            persistSupabaseSessionFallback(proxySession);
+            window.location.reload();
+            return;
+          }
+          setError(message);
         }
       }
       setBusy(false);
