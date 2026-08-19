@@ -248,3 +248,24 @@
 - [x] Change the canonical `viss` conversion from 1632.93 g to 1600 g across shared calculations, Purchase conversion, reports, and documentation.
 - [x] Add/update regression tests proving `1 viss = 1600 g` and no affected workflow uses the old factor.
 - [ ] Push the verified 1600-gram conversion to GitHub and deploy only to the new Netlify site/account.
+
+- [ ] Confirm the newly connected Netlify site is linked to GitHub `swammarn56-svg/C` main and is not the depleted previous site.
+- [ ] Confirm Netlify uses `pnpm build` and `dist/public`, then pull/deploy the latest 1600-gram viss commit.
+- [ ] Smoke-test the new Netlify URL and verify the deployed revision and application response.
+
+- [ ] Verify the new Netlify site `swammarn30.netlify.app` uses the latest GitHub `main` revision and correct `pnpm build` / `dist/public` settings.
+- [ ] Verify the new site has the original Supabase project environment configuration so existing data remains available, without exposing secret values.
+- [ ] Smoke-test the new live URL and verify login/data behavior plus the 1600-gram viss conversion.
+
+- [ ] Treat Supabase login reliability on `swammarn30.netlify.app` as a release blocker; verify valid login, invalid-password handling, timeout recovery, session installation, and local user mapping before final deployment confirmation.
+
+- [ ] Add the received Supabase service-role key and database connection variables securely to Netlify `swammarn30`; add the existing JWT secret before redeploying and testing login.
+
+- [ ] Change the new `swammarn30` Netlify site from Private to Public and verify the public URL reaches the Bakery ERP login page.
+
+- [ ] Diagnose the swammarn30 live `Signing in...` hang after the site became public.
+- [ ] Fix and redeploy the verified authentication path, then confirm the real Supabase account reaches the ERP dashboard and existing data loads.
+
+- [ ] Fix mobile login remaining stuck at Signing in by bounding Supabase session installation and surfacing client-side errors
+- [ ] Verify login fix with regression tests, production build, and live Netlify smoke test
+- [ ] Synchronize corrected login code to GitHub and confirm Netlify deployment

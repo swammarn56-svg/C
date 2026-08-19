@@ -106,8 +106,11 @@ function AccessGate({ children }: { children: ReactNode }) {
             if (!response.ok) throw new Error(payload.error_description || payload.msg || payload.error || "Unable to sign in.");
             return payload as { access_token: string; refresh_token: string };
           }), "Sign-in timed out. Check your connection and try again.");
-          const sessionResult = await supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
-          if (sessionResult.error) setError(sessionResult.error.message);
+          const sessionResult = await withAuthTimeout(
+            supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token }),
+            "Session installation timed out. Please refresh the page and try again.",
+          );
+          if (sessionResult.error) throw sessionResult.error;
         } catch (signInError) {
           setError(signInError instanceof Error ? signInError.message : "Unable to sign in. Please try again.");
         }
@@ -201,7 +204,7 @@ function PurchaseForm({ itemType, items, onClose, onDone }: { itemType: "product
   const [status, setStatus] = useState<"draft" | "confirmed">("confirmed");
   const [note, setNote] = useState("");
   const selected = items.find(item => item.id === itemId);
-  const preview = selected && quantity ? asNumber(quantity) * (selected.displayUnit === "pcs" ? 1 : unit === "kg" ? 1000 : unit === "viss" ? 1632.93 : 1) : 0;
+  const preview = selected && quantity ? asNumber(quantity) * (selected.displayUnit === "pcs" ? 1 : unit === "kg" ? 1000 : unit === "viss" ? 1600 : 1) : 0;
   return <Modal title={`Add ${itemType} purchase`} onClose={onClose}><form className="form-grid" onSubmit={event => { event.preventDefault(); create.mutate({ purchaseDate: date, itemId, inputQuantity: Number(quantity), inputUnit: unit, totalCost: Number(cost), status, note: note || null }); }}>
     <label>Date<input type="date" required value={date} onChange={event => setDate(event.target.value)} /></label><label>Item<select required value={itemId} onChange={event => setItemId(Number(event.target.value))}>{items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label>Quantity<input type="number" required min="0.001" step="0.001" value={quantity} onChange={event => setQuantity(event.target.value)} /></label><label>Input unit<select value={unit} onChange={event => setUnit(event.target.value as typeof unit)}>{itemType === "packaging" ? <option value="pcs">pcs</option> : <><option value="g">g</option><option value="kg">kg</option><option value="viss">viss</option></>}</select></label>

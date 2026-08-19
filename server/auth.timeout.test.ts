@@ -18,4 +18,17 @@ describe("authentication timeout handling", () => {
       vi.useRealTimers();
     }
   });
+
+  it("bounds a stalled Supabase session installation", async () => {
+    vi.useFakeTimers();
+    try {
+      const stalledSetSession = new Promise<never>(() => undefined);
+      const result = withAuthTimeout(stalledSetSession, "Session installation timed out", 100);
+      const assertion = expect(result).rejects.toThrow("Session installation timed out");
+      await vi.advanceTimersByTimeAsync(100);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
