@@ -385,6 +385,9 @@ export const inventoryRouter = router({
         }
         ensureEffective(item[0], input.date);
         const existingOperation = await db.select().from(operations).where(and(eq(operations.operationDate, dbDate(input.date)), eq(operations.itemId, input.itemId), eq(operations.operationType, input.type))).limit(1);
+        const previousOpeningOverride = existingOperation[0]?.openingOverrideQtyGrams ?? null;
+        const nextOpeningOverride = input.openingOverrideQtyGrams === undefined || input.openingOverrideQtyGrams === null ? null : input.openingOverrideQtyGrams.toString();
+        const openingOverrideChanged = String(previousOpeningOverride ?? "") !== String(nextOpeningOverride ?? "");
         await db
           .insert(operations)
           .values({
@@ -415,8 +418,11 @@ export const inventoryRouter = router({
               createdBy: ctx.user.id,
             },
           });
+        if (openingOverrideChanged) {
+          await db.update(operations).set({ openingOverrideQtyGrams: null, openingReason: null }).where(and(eq(operations.itemId, input.itemId), eq(operations.operationType, input.type), gt(operations.operationDate, dbDate(input.date))));
+        }
         const saved = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.operationDate, dbDate(input.date)), eq(operations.itemId, input.itemId), eq(operations.operationType, input.type))).limit(1);
-        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "operation_save", "operations", saved[0]?.id ?? null, input.date, { itemId: input.itemId, type: input.type, reason: input.openingReason ?? null });
+        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "operation_save", "operations", saved[0]?.id ?? null, input.date, { itemId: input.itemId, type: input.type, reason: input.openingReason ?? null, cascaded: openingOverrideChanged });
         return { success: true };
       }),
   }),
@@ -561,13 +567,20 @@ export const inventoryRouter = router({
         ensureEffective(item[0], input.date);
         const price = await db.select().from(shopItemPrices).where(and(eq(shopItemPrices.shopId, input.shopId), eq(shopItemPrices.itemId, input.itemId), eq(shopItemPrices.active, true))).limit(1);
         if (!price[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Set an active shop-item price before saving a sale." });
+        const existingSale = await db.select().from(salesEntries).where(and(eq(salesEntries.saleDate, dbDate(input.date)), eq(salesEntries.shopId, input.shopId), eq(salesEntries.itemId, input.itemId))).limit(1);
+        const previousSaleOpeningOverride = existingSale[0]?.openingOverrideQtyGrams ?? null;
+        const nextSaleOpeningOverride = input.openingOverrideQtyGrams === undefined || input.openingOverrideQtyGrams === null ? null : input.openingOverrideQtyGrams.toString();
+        const openingOverrideChanged = String(previousSaleOpeningOverride ?? "") !== String(nextSaleOpeningOverride ?? "");
         const sellingPricePerUnit = number(price[0].sellingPricePerUnit);
         await db
           .insert(salesEntries)
           .values({ ...input, saleDate: dbDate(input.date), produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(), openingReason: input.openingReason?.trim() || null, sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id })
           .onConflictDoUpdate({ target: [salesEntries.saleDate, salesEntries.shopId, salesEntries.itemId], set: { produceQtyGrams: input.produceQtyGrams.toString(), sellQtyGrams: input.sellQtyGrams.toString(), openingOverrideQtyGrams: input.openingOverrideQtyGrams === null || input.openingOverrideQtyGrams === undefined ? null : input.openingOverrideQtyGrams.toString(), openingReason: input.openingReason?.trim() || null, sellingPricePerUnit: sellingPricePerUnit.toFixed(2), note: input.note || null, createdBy: ctx.user.id } });
+        if (openingOverrideChanged) {
+          await db.update(salesEntries).set({ openingOverrideQtyGrams: null, openingReason: null }).where(and(eq(salesEntries.shopId, input.shopId), eq(salesEntries.itemId, input.itemId), gt(salesEntries.saleDate, dbDate(input.date))));
+        }
         const saved = await db.select({ id: salesEntries.id }).from(salesEntries).where(and(eq(salesEntries.saleDate, dbDate(input.date)), eq(salesEntries.shopId, input.shopId), eq(salesEntries.itemId, input.itemId))).limit(1);
-        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "sales_save", "salesEntries", saved[0]?.id ?? null, input.date, { itemId: input.itemId, shopId: input.shopId, reason: input.openingReason ?? null });
+        await recordAudit(ctx, input.openingOverrideQtyGrams !== null && input.openingOverrideQtyGrams !== undefined ? "opening_override" : "sales_save", "salesEntries", saved[0]?.id ?? null, input.date, { itemId: input.itemId, shopId: input.shopId, reason: input.openingReason ?? null, cascaded: openingOverrideChanged });
         return { success: true };
       }),
   }),

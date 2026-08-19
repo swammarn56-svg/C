@@ -275,3 +275,12 @@
 
 - [x] Reproduce and resolve the remaining mobile browser login failure until the supplied account reaches the ERP dashboard
 - [ ] Verify the deployed browser session and dashboard loading after the final login patch
+
+- [ ] Fix 11-to-12 August carryforward mismatches so each current-day Opening equals the previous-day Closing in Production, Packaging, and Sales
+- [ ] Reconcile affected live records, test downstream carryforward, and deploy the correction
+
+- [ ] Reconcile every mismatched row across Production, Packaging, and Sales for 11 August to 12 August and all downstream dates
+- [ ] Verify no ledger row violates previous Closing equals next Opening after the shared carryforward fix
+
+- [ ] Cascade a changed Opening through that day Closing and every later day Opening across Production, Packaging, and Sales
+- [ ] Verify earlier dates remain unchanged and deploy the tested cascade behavior
